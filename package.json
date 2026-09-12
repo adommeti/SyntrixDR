@@ -1,0 +1,14 @@
+{
+  "name": "syntrixdr",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.12.1",
+  "engines": { "node": ">=22 <23", "pnpm": ">=10" },
+  "scripts": {
+    "lint": "pnpm -r --if-present lint",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
+    "contracts": "pnpm --filter @drcc/contracts generate"
+  }
+}

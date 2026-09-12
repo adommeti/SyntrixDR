@@ -1,0 +1,73 @@
+# secrets / env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+secrets.json
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+htmlcov/
+.coverage*
+apps/api/reports/
+
+# node
+node_modules/
+.pnpm-store/
+apps/web/.next/
+apps/web/out/
+apps/web/next-env.d.ts
+apps/web/tsconfig.tsbuildinfo
+packages/*/dist/
+*.tsbuildinfo
+
+# tests / reports
+reports/
+tests/e2e/playwright-report/
+tests/e2e/test-results/
+tests/load/results/
+docs/reviews/evidence/**/*.png
+
+# docker / data
+.docker-data/
+*.log
+
+# os / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# model caches (mounted volumes locally)
+.cache/
+
+# ---------------------------------------------------------------------------
+# Local-only development tooling (D-262). Distributed privately as SyntrixDR-harness.zip;
+# never tracked. scripts/repo-doctor.sh and CI enforce the tracked-path allowlist.
+.claude/
+.codex/
+.agents/
+.githooks/
+.mcp.json
+CLAUDE.md
+AGENTS.md
+docs/plan/
+docs/build-prompts/
+docs/spec/reference/
+scripts/bootstrap.sh
+scripts/harness-doctor.sh
+scripts/new-increment.sh
+scripts/gen-build-prompts.py
+scripts/gen-playbook.py
+scripts/user-settings.example.json
+research/
+HARNESS_README.md

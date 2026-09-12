@@ -1,0 +1,8 @@
+# Route spec, CI, migrations and security-sensitive paths to the product owner for review.
+/docs/spec/                 @adommeti
+/docs/plan/                 @adommeti
+/.github/                   @adommeti
+/apps/api/migrations/       @adommeti
+/apps/api/app/identity_auth/ @adommeti
+/apps/api/app/ai_orchestration/ @adommeti
+/infra/                     @adommeti

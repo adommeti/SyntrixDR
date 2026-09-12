@@ -1,0 +1,262 @@
+# DR Command Center — local platform (D-217, D-241, D-248, D-250, D-256)
+#
+# Profiles
+#   (default)  postgres, redis, azurite, mailpit          -> `make dev`
+#   apps       api, worker, web (full-container run)      -> `docker compose --profile apps up`
+#   test       postgres-test (5433), redis-test (6380)    -> `docker compose --profile test up`
+#
+# Web/API normally run on the host for hot reload; the `apps` profile exists for
+# parity checks and CI-style runs. Nothing here depends on MinIO (superseded, D-217).
+
+name: drcc
+
+x-app-env: &app-env
+  DRCC_ENV: ${DRCC_ENV:-local}
+  DRCC_TENANT_ID: ${DRCC_TENANT_ID:-00000000-0000-0000-0000-000000000001}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-drcc}:${POSTGRES_PASSWORD:-drcc}@postgres:5432/${POSTGRES_DB:-drcc}
+  DATABASE_URL_RO: postgresql+psycopg://drcc_readonly:${POSTGRES_RO_PASSWORD:-drcc_ro}@postgres:5432/${POSTGRES_DB:-drcc}
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/0
+  AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+  BLOB_CONTAINER_EVIDENCE: ${BLOB_CONTAINER_EVIDENCE:-evidence}
+  BLOB_CONTAINER_DOCUMENTS: ${BLOB_CONTAINER_DOCUMENTS:-documents}
+  BLOB_CONTAINER_PACKAGES: ${BLOB_CONTAINER_PACKAGES:-packages}
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-drcc-noreply@localhost}
+  SESSION_SECRET: ${SESSION_SECRET:-}
+  CSRF_SECRET: ${CSRF_SECRET:-}
+  DRCC_PACKAGE_DEV_KEY: ${DRCC_PACKAGE_DEV_KEY:-}
+  AUTH_LOCAL_ENABLED: ${AUTH_LOCAL_ENABLED:-true}
+  ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-}
+  ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+  ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
+  ENTRA_REDIRECT_URI: ${ENTRA_REDIRECT_URI:-http://localhost:3000/api/v1/auth/entra/callback}
+  AI_ENABLED: ${AI_ENABLED:-false}
+  AI_PROVIDER: ${AI_PROVIDER:-synthetic}
+  SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
+  SYNTHETIC_BASE_URL: ${SYNTHETIC_BASE_URL:-https://api.synthetic.new/v1}
+  SYNTHETIC_MODEL: ${SYNTHETIC_MODEL:-kimi-k3}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
+  AI_SUMMARIES_ENABLED: ${AI_SUMMARIES_ENABLED:-false}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text-v1.5}
+  EMBEDDING_DIM: ${EMBEDDING_DIM:-768}
+  EMBEDDING_CACHE_DIR: /cache/embeddings
+  SPEECH_PROVIDER: ${SPEECH_PROVIDER:-faster_whisper}
+  WHISPER_MODEL: ${WHISPER_MODEL:-base}
+  FILE_MAX_MB: ${FILE_MAX_MB:-100}
+  MALWARE_SCANNER: ${MALWARE_SCANNER:-mock}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  APPLICATIONINSIGHTS_CONNECTION_STRING: ${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+
+services:
+  # ---------------------------------------------------------------------------
+  # Default profile — platform services
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16
+    container_name: drcc-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-drcc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-drcc}
+      POSTGRES_DB: ${POSTGRES_DB:-drcc}
+      POSTGRES_RO_PASSWORD: ${POSTGRES_RO_PASSWORD:-drcc_ro}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c max_connections=200
+      -c log_min_duration_statement=500
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-drcc} -d ${POSTGRES_DB:-drcc}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: drcc-redis
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+    container_name: drcc-azurite
+    # Blob service only (D-217). Loose mode tolerates SDK header variance.
+    command: ["azurite-blob", "--blobHost", "0.0.0.0", "--blobPort", "10000", "--location", "/data", "--loose", "--skipApiVersionCheck"]
+    ports:
+      - "${AZURITE_BLOB_PORT:-10000}:10000"
+    volumes:
+      - azurite-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 10000 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.31.1
+    container_name: drcc-mailpit
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+      MP_MAX_MESSAGES: "5000"
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8025/livez"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # apps profile — full-container run (parity / CI-style)
+  # ---------------------------------------------------------------------------
+  api:
+    profiles: ["apps"]
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: drcc-api
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: drcc-api
+      API_PORT: "8000"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    profiles: ["apps"]
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: drcc-worker
+    # Celery worker + beat in one process for local parity (D-241). Azure runs
+    # separate replicas; see infra/BICEP_PLAN.md. Playwright/Chromium (D-244),
+    # sentence-transformers (D-233) and faster-whisper (D-232) live in this image.
+    command: ["uv", "run", "celery", "-A", "app.jobs.celery_app", "worker", "--beat", "--loglevel=INFO", "--concurrency=2"]
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: drcc-worker
+    volumes:
+      - model-cache:/cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "uv run celery -A app.jobs.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  web:
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    container_name: drcc-web
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      NEXT_PUBLIC_API_BASE: /api
+      API_INTERNAL_URL: http://api:8000
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # test profile — isolated DB/Redis so tests never touch the dev volume (D-250)
+  # ---------------------------------------------------------------------------
+  postgres-test:
+    profiles: ["test"]
+    image: pgvector/pgvector:0.8.6-pg16
+    container_name: drcc-postgres-test
+    environment:
+      POSTGRES_USER: drcc
+      POSTGRES_PASSWORD: drcc
+      POSTGRES_DB: drcc_test
+      POSTGRES_RO_PASSWORD: drcc_ro
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - ./infra/docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drcc -d drcc_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis-test:
+    profiles: ["test"]
+    image: redis:7.4-alpine
+    container_name: drcc-redis-test
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
+  redis-data:
+  azurite-data:
+  model-cache:

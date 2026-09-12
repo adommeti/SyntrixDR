@@ -1,0 +1,197 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.12.1"
+  NEXT_TELEMETRY_DISABLED: "1"
+  CI: "true"
+
+jobs:
+  repo-hygiene:
+    name: repo-hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: git fetch origin main:refs/remotes/origin/main 2>/dev/null || true
+      - run: scripts/repo-doctor.sh
+
+  spec-frozen:
+    name: docs/spec unchanged on non-spec branches
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Fail if any non-spec/ branch touches docs/spec
+        run: |
+          if [[ "${{ github.head_ref }}" != spec/* ]]; then
+            changed="$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- docs/spec || true)"
+            if [ -n "$changed" ]; then echo "docs/spec changed on a code branch:"; echo "$changed"; exit 1; fi
+          fi
+
+  api:
+    name: api (lint · type · tests · migrate-from-empty · contracts)
+    runs-on: ubuntu-latest
+    needs: [repo-hygiene]
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.6-pg16
+        env: { POSTGRES_USER: drcc, POSTGRES_PASSWORD: drcc, POSTGRES_DB: drcc_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U drcc -d drcc_test" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://drcc:drcc@localhost:5432/drcc_test
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      AI_ENABLED: "false"
+      AUTH_LOCAL_ENABLED: "true"
+      SESSION_SECRET: ci-only-not-a-secret
+      CSRF_SECRET: ci-only-not-a-secret
+      DRCC_TENANT_ID: 00000000-0000-0000-0000-000000000000
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip until apps/api exists (BUILD-01)
+        id: gate
+        run: '[ -f apps/api/pyproject.toml ] && echo ready=true >> "$GITHUB_OUTPUT" || echo ready=false >> "$GITHUB_OUTPUT"'
+      - uses: astral-sh/setup-uv@v6
+        if: steps.gate.outputs.ready == 'true'
+        with: { enable-cache: true, cache-dependency-glob: "apps/api/uv.lock" }
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.ready == 'true'
+        with: { python-version: "${{ env.PYTHON_VERSION }}" }
+      - name: uv sync
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: apps/api
+        run: uv sync --frozen
+      - name: ruff
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: apps/api
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: pyright
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: apps/api
+        run: uv run pyright
+      - name: migrate from empty + alembic check
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: apps/api
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+          uv run alembic downgrade -1 && uv run alembic upgrade head
+      - name: pytest
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: apps/api
+        run: uv run pytest -q --no-header -p no:cacheprovider --junitxml=../../reports/api-junit.xml
+      - name: contracts drift
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+          pnpm install --frozen-lockfile
+          make contracts
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.gate.outputs.ready == 'true'
+        with: { name: api-reports, path: reports/, if-no-files-found: ignore }
+
+  web:
+    name: web (typecheck · lint · unit · build)
+    runs-on: ubuntu-latest
+    needs: [repo-hygiene]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip until apps/web exists (BUILD-01)
+        id: gate
+        run: '[ -f apps/web/package.json ] && echo ready=true >> "$GITHUB_OUTPUT" || echo ready=false >> "$GITHUB_OUTPUT"'
+      - uses: pnpm/action-setup@v4   # version read from package.json "packageManager"
+        if: steps.gate.outputs.ready == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - if: steps.gate.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.gate.outputs.ready == 'true'
+        run: pnpm --filter web exec tsc --noEmit
+      - if: steps.gate.outputs.ready == 'true'
+        run: pnpm --filter web lint && pnpm --filter web exec prettier --check .
+      - if: steps.gate.outputs.ready == 'true'
+        run: pnpm --filter web test -- --run
+      - if: steps.gate.outputs.ready == 'true'
+        run: pnpm --filter web build
+
+  security:
+    name: security (semgrep · bandit · pip-audit · pnpm audit · gitleaks · sbom · grype · checkov)
+    runs-on: ubuntu-latest
+    needs: [repo-hygiene]
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ env.PYTHON_VERSION }}" }
+      - uses: astral-sh/setup-uv@v6
+      - uses: pnpm/action-setup@v4   # version read from package.json "packageManager"
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}" }
+      - name: install scanners
+        run: |
+          uv tool install semgrep
+          uv tool install bandit
+          uv tool install pip-audit
+          uv tool install checkov
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oP '"tag_name": "v\K[^"]+')_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks
+      - name: run security gate
+        env: { SECURITY_REQUIRE_ALL: "1", SECURITY_FAIL_ON: critical }
+        run: scripts/security.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: security-reports, path: reports/security/, if-no-files-found: ignore }
+
+  e2e:
+    name: e2e (playwright)
+    runs-on: ubuntu-latest
+    needs: [api, web]
+    if: github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'e2e')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip until tests/e2e/playwright.config.ts exists
+        id: gate
+        run: '[ -f tests/e2e/playwright.config.ts ] && echo ready=true >> "$GITHUB_OUTPUT" || echo ready=false >> "$GITHUB_OUTPUT"'
+      - uses: pnpm/action-setup@v4   # version read from package.json "packageManager"
+        if: steps.gate.outputs.ready == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
+      - uses: astral-sh/setup-uv@v6
+        if: steps.gate.outputs.ready == 'true'
+      - if: steps.gate.outputs.ready == 'true'
+        run: cp .env.example .env && docker compose up -d --wait
+      - if: steps.gate.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile && (cd apps/api && uv sync --frozen && uv run alembic upgrade head) && make seed
+      - if: steps.gate.outputs.ready == 'true'
+        run: pnpm --filter e2e exec playwright install --with-deps chromium
+      - if: steps.gate.outputs.ready == 'true'
+        run: make e2e
+      - if: steps.gate.outputs.ready == 'true'
+        env: { AI_ENABLED: "false" }
+        run: make e2e E2E_ARGS="--grep @ai-off"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.gate.outputs.ready == 'true'
+        with: { name: playwright-report, path: tests/e2e/playwright-report/, if-no-files-found: ignore }
