@@ -3,7 +3,7 @@
 #   scripts/pr-body.sh NN > body.md
 set -euo pipefail
 cd "$(dirname "$0")/.."
-NN="$(printf '%02d' "$((10#${1:?NN})))"
+NN="$(printf '%02d' "$((10#${1:?NN}))")"
 plan="docs/plan/increments/BUILD-${NN}.plan.md"
 prompt="$(ls docs/build-prompts/BUILD-${NN}-*.md | head -n1)"
 [ -f "$plan" ] || { echo "missing $plan" >&2; exit 1; }
