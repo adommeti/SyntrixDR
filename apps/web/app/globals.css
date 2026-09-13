@@ -1,0 +1,14 @@
+@import "tailwindcss";
+@import "@drcc/ui/tokens.css";
+@import "tw-animate-css";
+
+/* Tailwind v4 scans this app by default; `packages/ui` ships components that
+   use Tailwind utility classes too, so its source must be scanned explicitly. */
+@source "../../../packages/ui/src";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}

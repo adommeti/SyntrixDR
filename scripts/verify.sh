@@ -44,7 +44,12 @@ if in_scope api; then
       run "ruff format --check" uv run ruff format --check . || exit 1
       run "pyright"      uv run pyright || exit 1
       if [ $QUICK = 1 ]; then
-        run "pytest (unit: domain+transitions+auth)" uv run pytest -q -m "domain or transitions or auth" -x --no-header -p no:cacheprovider || exit 1
+        # Exit 5 = "no tests collected", which is expected before any BUILD adds
+        # domain/transitions/auth-marked tests; only a real failure (any other
+        # nonzero exit) should fail the quick gate.
+        run "pytest (unit: domain+transitions+auth)" bash -c \
+          'uv run pytest -q -m "domain or transitions or auth" -x --no-header -p no:cacheprovider; ec=$?; [ "$ec" = 5 ] && exit 0; exit "$ec"' \
+          || exit 1
       else
         run "pytest (all)" uv run pytest -q --no-header -p no:cacheprovider || exit 1
       fi

@@ -1,0 +1,58 @@
+/* Design tokens (D-231 token plumbing). Consumers import via `@drcc/ui/tokens.css`
+   after `@import "tailwindcss";` so these custom properties back the generated
+   utilities (`bg-primary`, `text-danger`, etc). Dark mode is class-based
+   (`.dark` on <html>), not `prefers-color-scheme`, per UI_UX.md's persisted
+   Light/Dark preference. */
+
+@theme {
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0.145 0 0);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.145 0 0);
+  --color-muted: oklch(0.96 0 0);
+  --color-muted-foreground: oklch(0.45 0 0);
+  --color-border: oklch(0.9 0 0);
+  --color-ring: oklch(0.55 0.15 250);
+
+  --color-primary: oklch(0.55 0.18 250);
+  --color-primary-foreground: oklch(0.98 0 0);
+
+  /* StatusBadge tones — never color-only; always paired with icon + text. */
+  --color-success: oklch(0.6 0.15 145);
+  --color-success-foreground: oklch(0.98 0 0);
+  --color-warning: oklch(0.75 0.15 80);
+  --color-warning-foreground: oklch(0.2 0 0);
+  --color-danger: oklch(0.55 0.2 25);
+  --color-danger-foreground: oklch(0.98 0 0);
+  --color-info: oklch(0.6 0.12 230);
+  --color-info-foreground: oklch(0.98 0 0);
+
+  /* Health dial (invariant 9): GREEN >=85 / YELLOW 60-84.99 / RED <60. */
+  --color-health-green: oklch(0.6 0.15 145);
+  --color-health-yellow: oklch(0.8 0.16 95);
+  --color-health-red: oklch(0.55 0.2 25);
+
+  /* Treemap (invariant 9): GREEN >=85 / LIGHT_ORANGE >=60 / DARK_ORANGE >=40 / RED <40. */
+  --color-health-light-orange: oklch(0.78 0.15 60);
+  --color-health-dark-orange: oklch(0.62 0.18 45);
+
+  /* Severity (D-234): CRITICAL, HIGH, MEDIUM, LOW. */
+  --color-severity-critical: oklch(0.5 0.22 25);
+  --color-severity-high: oklch(0.65 0.19 45);
+  --color-severity-medium: oklch(0.8 0.16 95);
+  --color-severity-low: oklch(0.65 0.1 230);
+}
+
+.dark {
+  --color-background: oklch(0.145 0 0);
+  --color-foreground: oklch(0.98 0 0);
+  --color-card: oklch(0.19 0 0);
+  --color-card-foreground: oklch(0.98 0 0);
+  --color-muted: oklch(0.26 0 0);
+  --color-muted-foreground: oklch(0.7 0 0);
+  --color-border: oklch(0.3 0 0);
+  --color-ring: oklch(0.65 0.15 250);
+
+  --color-primary: oklch(0.7 0.16 250);
+  --color-primary-foreground: oklch(0.145 0 0);
+}

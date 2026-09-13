@@ -1,0 +1,9 @@
+{
+  "extends": "@drcc/config/tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "types": ["vitest/globals"]
+  },
+  "include": ["src", "vitest.setup.ts"]
+}
