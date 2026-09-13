@@ -1,0 +1,93 @@
+[project]
+name = "drcc-api"
+version = "0.1.0"
+description = "Syntrix DR Command Center — API"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115,<0.116",
+  "uvicorn[standard]>=0.32,<0.33",
+  "pydantic>=2.9,<3",
+  "pydantic-settings>=2.6,<3",
+  "sqlalchemy[asyncio]>=2.0,<2.1",
+  "asyncpg>=0.30,<0.31",
+  "psycopg[binary]>=3.2,<4",
+  "alembic>=1.13,<2",
+  "celery[redis]>=5.4,<6",
+  "redis>=5.1,<6",
+  "structlog>=24.4,<25",
+  "opentelemetry-api>=1.27,<2",
+  "opentelemetry-sdk>=1.27,<2",
+  "opentelemetry-instrumentation-fastapi>=0.48b0",
+  "httpx>=0.27,<0.28",
+  "azure-storage-blob>=12.23,<13",
+  "argon2-cffi>=23.1,<24",
+  "authlib>=1.3,<2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.24,<0.25",
+  "testcontainers[postgres]>=4.8,<5",
+  "ruff>=0.7,<0.8",
+  "pyright>=1.1.383,<2",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+include = ["app", "tests", "migrations"]
+
+# celery ships no type stubs (no celery-types dep requested); relax unknown-type
+# noise from its untyped decorators/attrs there. pytest fixture decorators hit the
+# same limitation in tests/. app/, migrations/ and everything else stay fully strict.
+[[tool.pyright.executionEnvironments]]
+root = "app/jobs"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUntypedFunctionDecorator = false
+reportFunctionMemberAccess = false
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownParameterType = false
+reportUnknownVariableType = false
+reportMissingParameterType = false
+reportUntypedFunctionDecorator = false
+reportFunctionMemberAccess = false
+
+[[tool.pyright.executionEnvironments]]
+root = "."
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "domain: domain rule tests",
+  "transitions: lifecycle transition table tests",
+  "auth: authorization matrix tests",
+  "api: API surface tests",
+  "integration: tests requiring real infra (DB/Redis/testcontainers)",
+  "ai: AI orchestration tests",
+  "files: file/evidence handling tests",
+  "retention: retention/purge job tests",
+  "load: load/perf tests (excluded from default CI run)",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

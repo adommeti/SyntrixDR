@@ -17,7 +17,7 @@ if [ -z "$base" ]; then
 fi
 
 # --- 1. tracked-path allowlist -------------------------------------------------------------------
-ROOT_ALLOW="README.md Makefile docker-compose.yml .env.example .gitignore package.json pnpm-workspace.yaml pnpm-lock.yaml apps packages infra docs scripts tests .github LICENSE"
+ROOT_ALLOW="README.md Makefile docker-compose.yml .env.example .gitignore package.json pnpm-workspace.yaml pnpm-lock.yaml apps packages infra docs scripts tests .github LICENSE .gitleaks.toml .prettierignore .prettierrc.json"
 DOCS_ALLOW="spec adr reviews"
 SCRIPTS_ALLOW="verify.sh security.sh pr-body.sh repo-doctor.sh seed"
 viol=0
