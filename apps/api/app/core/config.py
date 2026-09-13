@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# config.py -> core -> app -> api -> apps -> repo root, so the root .env is
+# found regardless of cwd (every Makefile target runs `uv run` from apps/api).
+# Real process env vars still take precedence over .env (pydantic-settings default).
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None, extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=_REPO_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     drcc_env: str = "local"
     drcc_tenant_id: str = "00000000-0000-0000-0000-000000000001"
