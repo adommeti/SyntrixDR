@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import timedelta
 
@@ -8,7 +9,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.clock import FakeClock
 from app.core.errors import AppError, app_error_handler
@@ -126,6 +127,96 @@ async def test_expired_key_re_executes(
         response = await client.post("/api/v1/_test-command", json={}, headers=headers)
 
     assert response.json() == {"side_effects": 1}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_expired_key_reset_is_not_a_double_execution(
+    engine: AsyncEngine, clock: FakeClock
+) -> None:
+    """Two requests racing on the same *expired* key must not both re-execute
+    the command. `.with_for_update()` on the expired-row read serializes them:
+    the loser blocks until the winner commits, then replays the winner's
+    result instead of also resetting and re-executing (issue #4)."""
+    user_id = uuid.uuid4()
+    key = str(uuid.uuid4())
+    route = "/api/v1/_test-command"
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO users (id, identity_type, display_name, email) "
+                "VALUES (:id, 'LOCAL', 'Test User', :email)"
+            ),
+            {"id": user_id, "email": f"{user_id}@example.test"},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO idempotency_keys "
+                "(id, key, user_id, route, request_hash, response_status, response_body, "
+                " created_at, expires_at) "
+                "VALUES (:id, :key, :user_id, :route, 'deadbeef', 200, CAST(:body AS JSONB), "
+                " :created_at, :expires_at)"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "key": key,
+                "user_id": user_id,
+                "route": route,
+                "body": '{"side_effects": 999}',
+                "created_at": clock.now() - timedelta(hours=25),
+                "expires_at": clock.now() - timedelta(hours=1),
+            },
+        )
+
+    executions: list[int] = []
+
+    async def _racer(n: int, *, ready: asyncio.Event | None = None, hold: float = 0.0) -> int:
+        conn = await engine.connect()
+        try:
+            sess = AsyncSession(bind=conn, expire_on_commit=False)
+            app = FastAPI()
+            app.add_exception_handler(AppError, app_error_handler)
+
+            async def _ctx(request: Request) -> IdempotencyContext:
+                # Signal readiness (and hold the still-uncommitted transaction
+                # open) right after the row is read/reset, so the other racer's
+                # own read is forced to land inside this exact race window.
+                ctx = await require_idempotency_key(request, sess, user_id, clock)
+                if ready is not None:
+                    ready.set()
+                if hold:
+                    await asyncio.sleep(hold)
+                return ctx
+
+            @app.post(route)
+            async def _handler(ctx=Depends(_ctx)) -> JSONResponse:  # noqa: ANN001, B008
+                if ctx.is_replay:
+                    return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
+                executions.append(n)
+                body = {"side_effects": n}
+                await complete(sess, ctx, 200, body)
+                await sess.commit()
+                return JSONResponse(status_code=200, content=body)
+
+            async with await _client(app) as client:
+                response = await client.post(route, json={}, headers={"Idempotency-Key": key})
+            return response.json()["side_effects"]
+        finally:
+            await conn.close()
+
+    try:
+        winner_read = asyncio.Event()
+        first = asyncio.create_task(_racer(1, ready=winner_read, hold=0.2))
+        await winner_read.wait()
+        second = asyncio.create_task(_racer(2))
+        results = await asyncio.gather(first, second)
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text("DELETE FROM idempotency_keys WHERE key = :key"), {"key": key})
+            await conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+
+    assert len(executions) == 1, "exactly one racer must re-execute the command"
+    assert results[0] == results[1] == executions[0], "the other racer must replay the same outcome"
 
 
 @pytest.mark.asyncio
