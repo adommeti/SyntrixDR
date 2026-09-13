@@ -1,9 +1,28 @@
 from __future__ import annotations
 
+import asyncio
 import smtplib
 from email.mime.text import MIMEText
 
+import structlog
+
 from app.core.config import get_settings
+
+logger = structlog.get_logger(__name__)
+
+
+def _send_sync(to: str, subject: str, body: str) -> None:
+    settings = get_settings()
+    message = MIMEText(body)
+    message["Subject"] = subject
+    message["From"] = settings.smtp_from_address
+    message["To"] = to
+
+    server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
+    try:
+        server.sendmail(settings.smtp_from_address, [to], message.as_string())
+    finally:
+        server.quit()
 
 
 async def send_password_reset_email(to: str, token: str) -> None:
@@ -32,16 +51,11 @@ Best regards,
 SyntrixDR Team
 """
 
-    message = MIMEText(body)
-    message["Subject"] = subject
-    message["From"] = settings.smtp_from_address
-    message["To"] = to
-
-    # Use synchronous SMTP (blocking); for high throughput, move to Celery task queue
+    # smtplib is blocking; run off the event loop rather than stalling the request path
+    # (python-api.md: async everywhere on the request path). No Celery task queue for this
+    # yet — request_password_reset always returns 202 regardless (no enumeration), so a send
+    # failure must not raise; it's logged instead so it's visible to ops.
     try:
-        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
-        server.sendmail(settings.smtp_from_address, [to], message.as_string())
-        server.quit()
+        await asyncio.to_thread(_send_sync, to, subject, body)
     except Exception:
-        # In local dev (Mailpit), mail send failures are rare but silent in logs
-        pass
+        logger.warning("password_reset_email_send_failed", to_domain=to.rsplit("@", 1)[-1])
