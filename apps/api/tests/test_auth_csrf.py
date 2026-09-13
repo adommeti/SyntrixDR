@@ -1,117 +1,52 @@
+"""CSRF protection tests — exercise the real dependencies, not a local reimplementation.
+
+`app.identity_auth.dependencies.get_current_session`/`require_csrf` and
+`app.identity_auth.session_store.RedisSessionStore` are wired into a small test app the
+same way the real router wires them, via `CurrentSession`/`RequireCsrfDependency`.
+"""
+
 from __future__ import annotations
 
 import uuid
 
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
+from redis.asyncio import Redis
 
+from app.core.clock import Clock, FakeClock
 from app.core.errors import AppError, app_error_handler
+from app.identity_auth.dependencies import CurrentSession, RequireCsrfDependency, get_clock
+from app.identity_auth.session_store import RedisSessionStore
 
 pytestmark = [pytest.mark.api, pytest.mark.auth, pytest.mark.integration]
 
 
-class SessionData:
-    """Mock SessionData for testing CSRF without full session_store complexity."""
-
-    def __init__(self, session_id: str, user_id: uuid.UUID, identity_type: str, csrf_token: str) -> None:
-        self.session_id = session_id
-        self.user_id = user_id
-        self.identity_type = identity_type
-        self.csrf_token = csrf_token
-
-
-class SessionExpiredError(AppError):
-    code = "SESSION_EXPIRED"
-    status_code = 401
-
-    def __init__(self) -> None:
-        super().__init__("Session has expired or is invalid.")
-
-
-class CsrfTokenInvalidError(AppError):
-    code = "CSRF_TOKEN_INVALID"
-    status_code = 403
-
-    def __init__(self) -> None:
-        super().__init__("CSRF token is missing or invalid.")
-
-
-class MockSessionStore:
-    """Minimal session store for testing; stores in memory."""
-
-    def __init__(self) -> None:
-        self.sessions: dict[str, SessionData] = {}
-
-    async def create(
-        self, session_id: str, user_id: uuid.UUID, identity_type: str, csrf_token: str
-    ) -> SessionData:
-        session_data = SessionData(session_id, user_id, identity_type, csrf_token)
-        self.sessions[session_id] = session_data
-        return session_data
-
-    async def read(self, session_id: str) -> SessionData | None:
-        return self.sessions.get(session_id)
-
-    async def touch(self, session_id: str) -> SessionData | None:
-        """Touch the session to update idle timeout."""
-        return self.sessions.get(session_id)
-
-
-async def get_current_session(request: Request, store: MockSessionStore) -> SessionData:
-    """Dependency: read session from cookie, raise 401 if missing/expired."""
-    session_id = request.cookies.get("drcc_session")
-    if not session_id:
-        raise SessionExpiredError()
-
-    session_data = await store.read(session_id)
-    if not session_data:
-        raise SessionExpiredError()
-
-    # Touch the session (update idle timeout)
-    await store.touch(session_id)
-    return session_data
-
-
-async def require_csrf(request: Request, session_data: SessionData) -> None:
-    """Dependency: validate X-CSRF-Token header matches session's csrf_token."""
-    token = request.headers.get("X-CSRF-Token")
-    if not token or token != session_data.csrf_token:
-        raise CsrfTokenInvalidError()
-
-
-def _build_app(store: MockSessionStore) -> FastAPI:
-    """Build a test FastAPI app with CSRF-protected routes."""
+def _build_app(redis_client: Redis, clock: FakeClock) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(AppError, app_error_handler)
-    app.state.store = store
+    app.state.session_store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
 
-    @app.get("/api/v1/auth/csrf", response_model=None)
-    async def get_csrf(request: Request) -> JSONResponse:
-        """Return the CSRF token for the current session."""
-        session_data = await get_current_session(request, store)
+    async def _clock_override() -> Clock:
+        return clock
+
+    app.dependency_overrides[get_clock] = _clock_override
+
+    @app.get("/api/v1/auth/csrf")
+    async def get_csrf(session_data: CurrentSession) -> JSONResponse:
         return JSONResponse(status_code=200, content={"csrf_token": session_data.csrf_token})
 
-    @app.post("/api/v1/auth/protected-action", response_model=None)
-    async def protected_post(request: Request) -> JSONResponse:
-        """A CSRF-protected POST endpoint."""
-        session_data = await get_current_session(request, store)
-        await require_csrf(request, session_data)
+    @app.post("/api/v1/auth/protected-action", dependencies=[RequireCsrfDependency])
+    async def protected_post(session_data: CurrentSession) -> JSONResponse:
         return JSONResponse(
             status_code=200, content={"message": "success", "user_id": str(session_data.user_id)}
         )
 
-    @app.post("/api/v1/auth/local/login", response_model=None)
+    @app.post("/api/v1/auth/local/login")
     async def local_login() -> JSONResponse:
-        """Login does NOT require CSRF (no session yet)."""
-        user_id = uuid.uuid4()
-        session_id = str(uuid.uuid4())
-        csrf_token = "test-csrf-token-12345"
-        await store.create(session_id, user_id, "LOCAL", csrf_token)
-        response = JSONResponse(status_code=200, content={"session_id": session_id, "csrf_token": csrf_token})
-        response.set_cookie("drcc_session", session_id, httponly=True, samesite="lax")
-        return response
+        """Mirrors the real login route's contract: no CSRF/session dependency at all."""
+        return JSONResponse(status_code=200, content={"message": "no csrf required"})
 
     return app
 
@@ -121,10 +56,9 @@ async def _client(app: FastAPI) -> AsyncClient:
 
 
 @pytest.mark.asyncio
-async def test_get_csrf_without_session_returns_401() -> None:
-    """GET /api/v1/auth/csrf without session cookie -> 401 SESSION_EXPIRED."""
-    store = MockSessionStore()
-    app = _build_app(store)
+async def test_get_csrf_without_session_returns_401(redis_client: Redis, clock: FakeClock) -> None:
+    """GET /api/v1/auth/csrf without a session cookie -> 401 SESSION_EXPIRED."""
+    app = _build_app(redis_client, clock)
 
     async with await _client(app) as client:
         response = await client.get("/api/v1/auth/csrf")
@@ -134,57 +68,59 @@ async def test_get_csrf_without_session_returns_401() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_csrf_with_valid_session_returns_token() -> None:
-    """GET /api/v1/auth/csrf with valid session -> returns the session's csrf_token."""
-    store = MockSessionStore()
-    user_id = uuid.uuid4()
-    session_id = str(uuid.uuid4())
-    expected_token = "test-csrf-token-abc123"
-    await store.create(session_id, user_id, "LOCAL", expected_token)
+async def test_get_csrf_with_valid_session_returns_token(
+    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+) -> None:
+    """GET /api/v1/auth/csrf with a valid session -> returns the session's csrf_token."""
+    app = _build_app(redis_client, clock)
+    store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
+    session_id = uuid.uuid4()
+    created = await store.create(session_id, seed_user, "LOCAL", clock)
 
-    app = _build_app(store)
     async with await _client(app) as client:
-        response = await client.get("/api/v1/auth/csrf", cookies={"drcc_session": session_id})
+        response = await client.get("/api/v1/auth/csrf", cookies={"drcc_session": str(session_id)})
 
     assert response.status_code == 200
-    body = response.json()
-    assert body["csrf_token"] == expected_token
+    assert response.json()["csrf_token"] == created.csrf_token
+
+    await redis_client.delete(f"drcc:session:{session_id}")
 
 
 @pytest.mark.asyncio
-async def test_post_without_csrf_header_returns_403() -> None:
-    """POST to CSRF-protected endpoint without X-CSRF-Token header -> 403 CSRF_TOKEN_INVALID."""
-    store = MockSessionStore()
-    user_id = uuid.uuid4()
-    session_id = str(uuid.uuid4())
-    csrf_token = "valid-token-123"
-    await store.create(session_id, user_id, "LOCAL", csrf_token)
+async def test_post_without_csrf_header_returns_403(
+    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+) -> None:
+    """POST to a CSRF-protected endpoint without X-CSRF-Token -> 403 CSRF_TOKEN_INVALID."""
+    app = _build_app(redis_client, clock)
+    store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
+    session_id = uuid.uuid4()
+    await store.create(session_id, seed_user, "LOCAL", clock)
 
-    app = _build_app(store)
     async with await _client(app) as client:
-        # No X-CSRF-Token header
         response = await client.post(
-            "/api/v1/auth/protected-action", cookies={"drcc_session": session_id}, json={}
+            "/api/v1/auth/protected-action", cookies={"drcc_session": str(session_id)}, json={}
         )
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "CSRF_TOKEN_INVALID"
 
+    await redis_client.delete(f"drcc:session:{session_id}")
+
 
 @pytest.mark.asyncio
-async def test_post_with_wrong_csrf_token_returns_403() -> None:
-    """POST with wrong X-CSRF-Token -> 403 CSRF_TOKEN_INVALID."""
-    store = MockSessionStore()
-    user_id = uuid.uuid4()
-    session_id = str(uuid.uuid4())
-    csrf_token = "correct-token"
-    await store.create(session_id, user_id, "LOCAL", csrf_token)
+async def test_post_with_wrong_csrf_token_returns_403(
+    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+) -> None:
+    """POST with the wrong X-CSRF-Token -> 403 CSRF_TOKEN_INVALID."""
+    app = _build_app(redis_client, clock)
+    store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
+    session_id = uuid.uuid4()
+    await store.create(session_id, seed_user, "LOCAL", clock)
 
-    app = _build_app(store)
     async with await _client(app) as client:
         response = await client.post(
             "/api/v1/auth/protected-action",
-            cookies={"drcc_session": session_id},
+            cookies={"drcc_session": str(session_id)},
             headers={"X-CSRF-Token": "wrong-token"},
             json={},
         )
@@ -192,43 +128,41 @@ async def test_post_with_wrong_csrf_token_returns_403() -> None:
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "CSRF_TOKEN_INVALID"
 
+    await redis_client.delete(f"drcc:session:{session_id}")
+
 
 @pytest.mark.asyncio
-async def test_post_with_correct_csrf_token_succeeds() -> None:
-    """POST with correct X-CSRF-Token -> request proceeds, 200."""
-    store = MockSessionStore()
-    user_id = uuid.uuid4()
-    session_id = str(uuid.uuid4())
-    csrf_token = "correct-token-xyz"
-    await store.create(session_id, user_id, "LOCAL", csrf_token)
+async def test_post_with_correct_csrf_token_succeeds(
+    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+) -> None:
+    """POST with the correct X-CSRF-Token -> request proceeds, 200."""
+    app = _build_app(redis_client, clock)
+    store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
+    session_id = uuid.uuid4()
+    created = await store.create(session_id, seed_user, "LOCAL", clock)
 
-    app = _build_app(store)
     async with await _client(app) as client:
         response = await client.post(
             "/api/v1/auth/protected-action",
-            cookies={"drcc_session": session_id},
-            headers={"X-CSRF-Token": csrf_token},
+            cookies={"drcc_session": str(session_id)},
+            headers={"X-CSRF-Token": created.csrf_token},
             json={},
         )
 
     assert response.status_code == 200
     body = response.json()
     assert body["message"] == "success"
-    assert body["user_id"] == str(user_id)
+    assert body["user_id"] == str(seed_user)
+
+    await redis_client.delete(f"drcc:session:{session_id}")
 
 
 @pytest.mark.asyncio
-async def test_login_does_not_require_csrf() -> None:
-    """POST /api/v1/auth/local/login has no session yet, does not require CSRF."""
-    store = MockSessionStore()
-    app = _build_app(store)
+async def test_login_does_not_require_csrf(redis_client: Redis, clock: FakeClock) -> None:
+    """POST /api/v1/auth/local/login has no session yet, so it carries no CSRF guard."""
+    app = _build_app(redis_client, clock)
 
     async with await _client(app) as client:
         response = await client.post("/api/v1/auth/local/login", json={})
 
     assert response.status_code == 200
-    body = response.json()
-    assert "session_id" in body
-    assert "csrf_token" in body
-    # Verify the session was created and can be used in follow-up requests
-    assert body["session_id"] in store.sessions
