@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 
+from app.core.clock import SystemClock
+from app.core.idempotency import complete, require_idempotency_key
 from app.identity_auth.dependencies import (
     CurrentSession,
     DbSession,
@@ -79,11 +82,21 @@ async def get_team_workload_route(
     return TeamWorkloadResponse(**workload)  # type: ignore[arg-type]
 
 
-@router.post("/admin/local-users", dependencies=[RequireCsrfDependency, RequireReauthDependency])
+@router.post(
+    "/admin/local-users",
+    dependencies=[RequireCsrfDependency, RequireReauthDependency],
+    response_model=None,
+)
 async def post_create_local_user(
-    body: CreateLocalUserRequest, session: DbSession, session_data: CurrentSession
-) -> CreateLocalUserResponse:
-    """High-risk, Global-Admin-only, reauth-guarded (D-235/D-228)."""
+    request: Request, body: CreateLocalUserRequest, session: DbSession, session_data: CurrentSession
+) -> CreateLocalUserResponse | JSONResponse:
+    """High-risk, Global-Admin-only, reauth-guarded (D-235/D-228). A real domain command (not a
+    session endpoint like identity_auth's routes), so D-215 applies: Idempotency-Key required."""
+    ctx = await require_idempotency_key(request, session, session_data.user_id, SystemClock())
+    if ctx.is_replay:
+        assert ctx.stored_status is not None  # invariant: a replay always has a stored outcome
+        return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
+
     result = await create_local_user(
         session,
         actor_id=session_data.user_id,
@@ -91,4 +104,7 @@ async def post_create_local_user(
         email=body.email,
         password=body.password,
     )
+    response_body = {"user_id": str(result.user_id)}
+    await complete(session, ctx, 200, response_body)
+    await session.commit()
     return CreateLocalUserResponse(user_id=result.user_id)

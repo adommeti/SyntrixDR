@@ -15,7 +15,8 @@ export interface paths {
         put?: never;
         /**
          * Post Create Local User
-         * @description High-risk, Global-Admin-only, reauth-guarded (D-235/D-228).
+         * @description High-risk, Global-Admin-only, reauth-guarded (D-235/D-228). A real domain command (not a
+         *     session endpoint like identity_auth's routes), so D-215 applies: Idempotency-Key required.
          */
         post: operations["post_create_local_user_api_v1_admin_local_users_post"];
         delete?: never;
@@ -327,14 +328,6 @@ export interface components {
             /** Password */
             password: string;
         };
-        /** CreateLocalUserResponse */
-        CreateLocalUserResponse: {
-            /**
-             * User Id
-             * Format: uuid
-             */
-            user_id: string;
-        };
         /** CsrfTokenResponse */
         CsrfTokenResponse: {
             /** Csrf Token */
@@ -529,7 +522,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CreateLocalUserResponse"];
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

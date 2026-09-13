@@ -269,7 +269,7 @@ async def test_create_local_user_denies_non_admin(
         response = await client.post(
             "/api/v1/admin/local-users",
             cookies={"drcc_session": session_id},
-            headers={"X-CSRF-Token": csrf_token},
+            headers={"X-CSRF-Token": csrf_token, "Idempotency-Key": str(uuid.uuid4())},
             json={"display_name": "New User", "email": "new@example.test", "password": "NewPassword123!"},
         )
 
@@ -298,11 +298,12 @@ async def test_create_local_user_succeeds_for_admin_with_csrf_and_reauth(
     )
     await session.flush()
 
+    idempotency_key = str(uuid.uuid4())
     async with await _client(app) as client:
         response = await client.post(
             "/api/v1/admin/local-users",
             cookies={"drcc_session": session_id},
-            headers={"X-CSRF-Token": csrf_token},
+            headers={"X-CSRF-Token": csrf_token, "Idempotency-Key": idempotency_key},
             json={"display_name": "New User", "email": "new@example.test", "password": "NewPassword123!"},
         )
 
@@ -314,4 +315,78 @@ async def test_create_local_user_succeeds_for_admin_with_csrf_and_reauth(
         {"uid": response.json()["user_id"]},
     )
     assert audit_row.scalar_one() == "AUTH_LOCAL_USER_CREATED"
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_create_local_user_missing_idempotency_key_returns_400(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """D-215: POST /admin/local-users is a real domain command (not a session endpoint like
+    identity_auth's routes), so a missing Idempotency-Key header is rejected."""
+    admin_id = await _create_local_admin(session, "AdminPassword123!")
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+    session.add(
+        ReauthGrant(
+            session_id=uuid.UUID(session_id),
+            user_id=admin_id,
+            method="PASSWORD",
+            granted_at=clock.now(),
+            expires_at=clock.now() + timedelta(minutes=5),
+        )
+    )
+    await session.flush()
+
+    async with await _client(app) as client:
+        response = await client.post(
+            "/api/v1/admin/local-users",
+            cookies={"drcc_session": session_id},
+            headers={"X-CSRF-Token": csrf_token},
+            json={"display_name": "New User", "email": "new@example.test", "password": "NewPassword123!"},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_create_local_user_replay_does_not_create_a_second_user(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """D-215: replaying the same Idempotency-Key returns the original outcome, no second row."""
+    admin_id = await _create_local_admin(session, "AdminPassword123!")
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+    session.add(
+        ReauthGrant(
+            session_id=uuid.UUID(session_id),
+            user_id=admin_id,
+            method="PASSWORD",
+            granted_at=clock.now(),
+            expires_at=clock.now() + timedelta(minutes=5),
+        )
+    )
+    await session.flush()
+
+    idempotency_key = str(uuid.uuid4())
+    body = {"display_name": "New User", "email": "replay@example.test", "password": "NewPassword123!"}
+    headers = {"X-CSRF-Token": csrf_token, "Idempotency-Key": idempotency_key}
+
+    async with await _client(app) as client:
+        first = await client.post(
+            "/api/v1/admin/local-users", cookies={"drcc_session": session_id}, headers=headers, json=body
+        )
+        second = await client.post(
+            "/api/v1/admin/local-users", cookies={"drcc_session": session_id}, headers=headers, json=body
+        )
+
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+
+    count = await session.execute(
+        text("SELECT COUNT(*) AS cnt FROM users WHERE email = 'replay@example.test'")
+    )
+    assert count.one().cnt == 1
     await redis_client.delete(f"drcc:session:{session_id}")

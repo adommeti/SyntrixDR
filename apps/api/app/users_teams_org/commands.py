@@ -49,7 +49,8 @@ async def create_local_user(
         entity_id=user.id,
         action="AUTH_LOCAL_USER_CREATED",
     )
-    await session.commit()
+    # Does not commit: the route commits once after `complete()` so the user row, audit row, and
+    # idempotency-key completion land in one transaction (D-215).
     return CreateLocalUserResult(user_id=user.id)
 
 

@@ -25,21 +25,6 @@
         "title": "CreateLocalUserRequest",
         "type": "object"
       },
-      "CreateLocalUserResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "user_id": {
-            "format": "uuid",
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "user_id"
-        ],
-        "title": "CreateLocalUserResponse",
-        "type": "object"
-      },
       "CsrfTokenResponse": {
         "additionalProperties": false,
         "properties": {
@@ -534,7 +519,7 @@
   "paths": {
     "/api/v1/admin/local-users": {
       "post": {
-        "description": "High-risk, Global-Admin-only, reauth-guarded (D-235/D-228).",
+        "description": "High-risk, Global-Admin-only, reauth-guarded (D-235/D-228). A real domain command (not a\nsession endpoint like identity_auth's routes), so D-215 applies: Idempotency-Key required.",
         "operationId": "post_create_local_user_api_v1_admin_local_users_post",
         "requestBody": {
           "content": {
@@ -550,9 +535,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreateLocalUserResponse"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
