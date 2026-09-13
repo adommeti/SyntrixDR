@@ -30,8 +30,9 @@ def get_url() -> str:
 
 def _is_comparable_table(table_name: str | None) -> bool:
     """True only for fully modeled tables — excludes both un-modeled schema_v1/v2
-    tables (their modules land in later BUILDs) and FK-resolution stubs
-    (`app.core.external_refs`, a single `id` column, not the real shape).
+    tables (their modules land in later BUILDs), FK-resolution stubs
+    (`app.core.external_refs`, a single `id` column, not the real shape), and
+    partial_read_only tables (owned by other modules, only queried here).
     Without this, `alembic check` would see every un-modeled table as a pending
     DROP and every stub as a pending ADD (D-247).
     """
@@ -40,7 +41,7 @@ def _is_comparable_table(table_name: str | None) -> bool:
     table = target_metadata.tables.get(table_name)
     if table is None:
         return False
-    return not table.info.get("fk_resolution_stub", False)
+    return not table.info.get("fk_resolution_stub", False) and not table.info.get("partial_read_only", False)
 
 
 def include_object(object_: Any, name: str | None, type_: str, reflected: bool, compare_to: Any) -> bool:

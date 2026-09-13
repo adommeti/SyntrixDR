@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -23,4 +24,10 @@ def make_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession
 
 async def get_session(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[AsyncSession]:
     async with session_factory() as session:
+        yield session
+
+
+async def get_request_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency: one session per request, bound to `app.state.session_factory`."""
+    async with request.app.state.session_factory() as session:
         yield session

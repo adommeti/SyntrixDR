@@ -8,11 +8,13 @@ import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
+from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
 
 from app.core.clock import FakeClock
+from app.core.config import get_settings
 
 _API_DIR = Path(__file__).resolve().parents[1]
 
@@ -76,3 +78,52 @@ async def seed_user(session: AsyncSession) -> uuid.UUID:
 @pytest.fixture
 def idempotency_key() -> str:
     return str(uuid.uuid4())
+
+
+@pytest_asyncio.fixture
+async def redis_client() -> AsyncIterator[Redis]:
+    """Connects to the local redis instance (assumes docker-compose is running).
+
+    Tests that create keys should clean them up or use a unique prefix.
+    """
+    settings = get_settings()
+    client = Redis.from_url(settings.redis_url, decode_responses=False)
+    try:
+        await client.ping()
+        yield client
+    finally:
+        await client.close()
+
+
+@pytest_asyncio.fixture
+async def local_user_with_password(session: AsyncSession) -> tuple[uuid.UUID, str]:
+    """Create a LOCAL user with a known password for authentication testing.
+
+    Returns:
+        Tuple of (user_id, password)
+    """
+    from app.identity_auth.models import LocalCredential
+    from app.identity_auth.security import PasswordHasher
+
+    user_id = uuid.uuid4()
+    email = f"{user_id}@example.test"
+    password = "TestPassword123!"
+
+    # Create user row
+    await session.execute(
+        text(
+            "INSERT INTO users (id, identity_type, display_name, email) "
+            "VALUES (:id, 'LOCAL', 'Test User', :email)"
+        ),
+        {"id": user_id, "email": email},
+    )
+    await session.flush()
+
+    # Create local_credentials via ORM
+    hasher = PasswordHasher()
+    password_hash = hasher.hash_password(password)
+    cred = LocalCredential(user_id=user_id, password_hash=password_hash)
+    session.add(cred)
+    await session.flush()
+
+    return user_id, password

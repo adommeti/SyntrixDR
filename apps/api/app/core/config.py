@@ -44,6 +44,21 @@ class Settings(BaseSettings):
     session_secret: str = ""
     csrf_secret: str = ""
 
+    entra_tenant_id: str = ""
+    entra_client_id: str = ""
+    entra_client_secret: str = ""
+    entra_redirect_uri: str = "http://localhost:3000/api/auth/entra/callback"
+
+    session_absolute_hours: int = 8
+    session_idle_minutes: int = 30
+    reauth_window_minutes: int = 5
+
+    lockout_threshold: int = 10
+    lockout_window_minutes: int = 15
+    lockout_duration_minutes: int = 30
+
+    password_reset_token_ttl_minutes: int = 30
+
     ai_enabled: bool = False
     ai_provider: str = "synthetic"
 

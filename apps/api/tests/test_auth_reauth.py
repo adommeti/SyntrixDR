@@ -1,0 +1,464 @@
+from __future__ import annotations
+
+import uuid
+from datetime import timedelta
+
+import pytest
+import pytest_asyncio
+from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.audit import AuditEvent
+from app.core.clock import FakeClock
+from app.core.errors import AppError, app_error_handler
+from app.identity_auth.commands import InvalidCredentialsError, reauth
+from app.identity_auth.dependencies import ReauthRequiredError, require_reauth
+from app.identity_auth.models import LocalCredential, ReauthGrant, SessionRecord
+from app.identity_auth.security import PasswordHasher
+from app.identity_auth.session_store import SessionData
+
+pytestmark = [pytest.mark.api, pytest.mark.auth, pytest.mark.integration]
+
+
+@pytest_asyncio.fixture
+async def local_user_with_credentials(session: AsyncSession, clock: FakeClock) -> tuple[uuid.UUID, str]:
+    """Create a LOCAL user with local credentials (password hash).
+
+    Returns:
+        Tuple of (user_id, plaintext_password)
+    """
+    user_id = uuid.uuid4()
+    plaintext_password = "MyTestPassword123!"
+    hasher = PasswordHasher()
+    password_hash = hasher.hash_password(plaintext_password)
+
+    # Create user
+    await session.execute(
+        text(
+            "INSERT INTO users (id, identity_type, display_name, email) "
+            "VALUES (:id, 'LOCAL', 'Test User', :email)"
+        ),
+        {"id": user_id, "email": f"{user_id}@example.test"},
+    )
+
+    # Create local credentials
+    credential = LocalCredential(
+        user_id=user_id,
+        password_hash=password_hash,
+        algorithm="argon2id",
+        failed_attempts=0,
+        totp_enabled=False,
+        must_reset=False,
+        created_at=clock.now(),
+        updated_at=clock.now(),
+    )
+    session.add(credential)
+
+    await session.flush()
+    return user_id, plaintext_password
+
+
+@pytest_asyncio.fixture
+async def session_record(
+    session: AsyncSession, local_user_with_credentials: tuple[uuid.UUID, str], clock: FakeClock
+) -> SessionRecord:
+    """Create a durable session record for testing require_reauth.
+
+    Returns:
+        SessionRecord with session_id, user_id, and expiry times set.
+    """
+    user_id, _ = local_user_with_credentials
+    session_id = uuid.uuid4()
+    now = clock.now()
+
+    record = SessionRecord(
+        id=session_id,
+        user_id=user_id,
+        identity_type="LOCAL",
+        created_at=now,
+        last_seen_at=now,
+        absolute_expires_at=now + timedelta(hours=8),
+        idle_expires_at=now + timedelta(minutes=30),
+        revoked_at=None,
+        revoked_reason=None,
+    )
+    session.add(record)
+    await session.flush()
+    return record
+
+
+@pytest.fixture
+def session_data(session_record: SessionRecord) -> SessionData:
+    """Create session data object for passing to require_reauth and reauth.
+
+    Returns:
+        SessionData with session_id, user_id, identity_type, and expiry times.
+    """
+    return SessionData(
+        session_id=str(session_record.id),
+        user_id=session_record.user_id,
+        identity_type="LOCAL",
+        csrf_token="dummy-csrf-token-for-testing",
+        absolute_expires_at=session_record.absolute_expires_at,
+        idle_expires_at=session_record.idle_expires_at,
+    )
+
+
+@pytest.mark.asyncio
+async def test_reauth_with_correct_password_inserts_grant(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Test that reauth with correct password inserts a reauth_grants row."""
+    user_id, plaintext_password = local_user_with_credentials
+
+    result = await reauth(
+        session,
+        store=None,  # type: ignore # store is not used in reauth
+        clock=clock,
+        session_data=session_data,
+        method="PASSWORD",
+        password=plaintext_password,
+    )
+
+    # Verify the grant was created
+    grant = (
+        await session.execute(
+            select(ReauthGrant).where(
+                (ReauthGrant.session_id == uuid.UUID(session_data.session_id))
+                & (ReauthGrant.user_id == user_id)
+            )
+        )
+    ).scalar_one_or_none()
+
+    assert grant is not None
+    assert grant.method == "PASSWORD"
+    assert grant.granted_at == clock.now()
+    assert grant.expires_at == clock.now() + timedelta(minutes=5)
+
+    # Verify the response
+    assert result.granted_at == clock.now().isoformat()
+    assert result.expires_at == (clock.now() + timedelta(minutes=5)).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_require_reauth_passes_within_window(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Test that require_reauth passes when a valid grant exists within the 5-minute window."""
+    _, plaintext_password = local_user_with_credentials
+
+    # First, grant reauth
+    await reauth(
+        session,
+        store=None,  # type: ignore
+        clock=clock,
+        session_data=session_data,
+        method="PASSWORD",
+        password=plaintext_password,
+    )
+
+    # Verify require_reauth passes (does not raise)
+    await require_reauth(session, session_data, clock)  # Should not raise
+
+
+@pytest.mark.asyncio
+async def test_require_reauth_fails_after_expiry(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Test that require_reauth raises ReauthRequiredError after the 5-minute window expires.
+
+    Even though the grant row still exists, it should be considered expired by the clock.
+    """
+    user_id, plaintext_password = local_user_with_credentials
+
+    # Grant reauth
+    await reauth(
+        session,
+        store=None,  # type: ignore
+        clock=clock,
+        session_data=session_data,
+        method="PASSWORD",
+        password=plaintext_password,
+    )
+
+    # Advance clock past the 5-minute window (5m 1s)
+    clock.advance(minutes=5, seconds=1)
+
+    # Verify that require_reauth now raises ReauthRequiredError
+    with pytest.raises(ReauthRequiredError):
+        await require_reauth(session, session_data, clock)
+
+    # Verify the grant row still exists in the database (it's just expired)
+    grant = (
+        await session.execute(
+            select(ReauthGrant).where(
+                (ReauthGrant.session_id == uuid.UUID(session_data.session_id))
+                & (ReauthGrant.user_id == user_id)
+            )
+        )
+    ).scalar_one_or_none()
+
+    assert grant is not None, "Grant should still exist in DB even though it's expired"
+
+
+@pytest.mark.asyncio
+async def test_reauth_after_expiry_issues_fresh_grant(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Test that calling reauth again after expiry creates a new grant."""
+    user_id, plaintext_password = local_user_with_credentials
+
+    # First grant
+    await reauth(
+        session,
+        store=None,  # type: ignore
+        clock=clock,
+        session_data=session_data,
+        method="PASSWORD",
+        password=plaintext_password,
+    )
+
+    # Advance clock past expiry
+    clock.advance(minutes=5, seconds=1)
+
+    # Second grant (after expiry)
+    await reauth(
+        session,
+        store=None,  # type: ignore
+        clock=clock,
+        session_data=session_data,
+        method="PASSWORD",
+        password=plaintext_password,
+    )
+
+    # Verify both grants exist in the database
+    grants = (
+        (
+            await session.execute(
+                select(ReauthGrant).where(
+                    (ReauthGrant.session_id == uuid.UUID(session_data.session_id))
+                    & (ReauthGrant.user_id == user_id)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    assert len(grants) == 2, "Should have two grant rows (one expired, one fresh)"
+
+    # The second grant should have a new expiry time
+    fresh_grant = max(grants, key=lambda g: g.granted_at)
+    assert fresh_grant.granted_at == clock.now()
+    assert fresh_grant.expires_at == clock.now() + timedelta(minutes=5)
+
+    # Verify require_reauth passes with the new grant
+    await require_reauth(session, session_data, clock)  # Should not raise
+
+
+@pytest.mark.asyncio
+async def test_reauth_with_wrong_password_raises_invalid_credentials(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Test that reauth with the wrong password raises InvalidCredentialsError."""
+    user_id, _ = local_user_with_credentials
+
+    with pytest.raises(InvalidCredentialsError):
+        await reauth(
+            session,
+            store=None,  # type: ignore
+            clock=clock,
+            session_data=session_data,
+            method="PASSWORD",
+            password="WrongPassword123!",
+        )
+
+    # Verify no grant was created
+    grants = (
+        (
+            await session.execute(
+                select(ReauthGrant).where(
+                    (ReauthGrant.session_id == uuid.UUID(session_data.session_id))
+                    & (ReauthGrant.user_id == user_id)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    assert len(grants) == 0, "No grant should be created on failed reauth"
+
+
+@pytest.mark.asyncio
+async def test_require_reauth_without_grant_raises_error(
+    session: AsyncSession, session_data: SessionData, clock: FakeClock
+) -> None:
+    """Test that require_reauth raises ReauthRequiredError when no grant exists."""
+    # Don't create any grant; directly call require_reauth
+    with pytest.raises(ReauthRequiredError):
+        await require_reauth(session, session_data, clock)
+
+
+@pytest.mark.asyncio
+async def test_reauth_audit_on_success(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Test that reauth creates an AUTH_REAUTH_GRANTED audit event on success."""
+    user_id, plaintext_password = local_user_with_credentials
+
+    await reauth(
+        session,
+        store=None,  # type: ignore
+        clock=clock,
+        session_data=session_data,
+        method="PASSWORD",
+        password=plaintext_password,
+    )
+
+    # Verify audit event was created
+    audit = (
+        await session.execute(
+            select(AuditEvent)
+            .where(
+                (AuditEvent.entity_type == "SESSION")
+                & (AuditEvent.entity_id == uuid.UUID(session_data.session_id))
+                & (AuditEvent.action == "AUTH_REAUTH_GRANTED")
+            )
+            .order_by(AuditEvent.occurred_at.desc())
+        )
+    ).scalar_one_or_none()
+
+    assert audit is not None
+    assert audit.actor_user_id == user_id
+    assert audit.metadata_["method"] == "PASSWORD"
+
+
+@pytest.mark.asyncio
+async def test_reauth_audit_on_failure(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Test that reauth creates an AUTH_REAUTH_FAILED audit event on failure."""
+    user_id, _ = local_user_with_credentials
+
+    with pytest.raises(InvalidCredentialsError):
+        await reauth(
+            session,
+            store=None,  # type: ignore
+            clock=clock,
+            session_data=session_data,
+            method="PASSWORD",
+            password="WrongPassword123!",
+        )
+
+    # Verify audit event was created
+    audit = (
+        await session.execute(
+            select(AuditEvent)
+            .where(
+                (AuditEvent.entity_type == "SESSION")
+                & (AuditEvent.entity_id == uuid.UUID(session_data.session_id))
+                & (AuditEvent.action == "AUTH_REAUTH_FAILED")
+            )
+            .order_by(AuditEvent.occurred_at.desc())
+        )
+    ).scalar_one_or_none()
+
+    assert audit is not None
+    assert audit.actor_user_id == user_id
+    assert audit.metadata_["method"] == "PASSWORD"
+
+
+@pytest.mark.asyncio
+async def test_reauth_via_http_route_with_csrf(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Test reauth through a FastAPI route wired with require_reauth dependency (integration test).
+
+    This verifies that the dependency works correctly in a real route context.
+    """
+    _, plaintext_password = local_user_with_credentials
+
+    # Build a test FastAPI app with a protected route
+    app = FastAPI()
+    app.add_exception_handler(AppError, app_error_handler)
+
+    async def _get_session_data() -> SessionData:
+        """Return the test session data."""
+        return session_data
+
+    async def _require_reauth_dep(
+        session_arg: AsyncSession = Depends(lambda: session),  # noqa: B008
+        session_data_arg: SessionData = Depends(_get_session_data),  # noqa: B008
+        clock_arg: FakeClock = Depends(lambda: clock),  # noqa: B008
+    ) -> None:  # noqa: ANN001
+        """Dependency wrapper for require_reauth."""
+        return await require_reauth(session_arg, session_data_arg, clock_arg)
+
+    @app.post("/api/v1/_test-sensitive-operation")
+    async def sensitive_route(dep=Depends(_require_reauth_dep)) -> JSONResponse:  # noqa: ANN001, B008
+        return JSONResponse(status_code=200, content={"status": "success"})
+
+    async def _client(app: FastAPI) -> AsyncClient:
+        return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+    # First, call the route without a grant—should fail with 403
+    async with await _client(app) as client:
+        response = await client.post("/api/v1/_test-sensitive-operation")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "REAUTH_REQUIRED"
+
+    # Grant reauth
+    await reauth(
+        session,
+        store=None,  # type: ignore
+        clock=clock,
+        session_data=session_data,
+        method="PASSWORD",
+        password=plaintext_password,
+    )
+
+    # Now call the route—should succeed
+    async with await _client(app) as client:
+        response = await client.post("/api/v1/_test-sensitive-operation")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+    # Advance clock past expiry
+    clock.advance(minutes=5, seconds=1)
+
+    # Call the route again—should fail again
+    async with await _client(app) as client:
+        response = await client.post("/api/v1/_test-sensitive-operation")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "REAUTH_REQUIRED"
