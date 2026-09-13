@@ -112,6 +112,20 @@ async def test_get_user_by_id(
 
 
 @pytest.mark.asyncio
+async def test_get_user_by_id_404_for_unknown_user(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+) -> None:
+    app = _build_app(session, redis_client, clock)
+    session_id, _ = await _create_session_cookie(session, redis_client, clock, seed_user)
+
+    async with await _client(app) as client:
+        response = await client.get(f"/api/v1/users/{uuid.uuid4()}", cookies={"drcc_session": session_id})
+
+    assert response.status_code == 404
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
 async def test_list_teams(
     session: AsyncSession, redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
 ) -> None:
@@ -160,6 +174,21 @@ async def _create_local_admin(session: AsyncSession, password: str) -> uuid.UUID
     session.add(RoleAssignment(user_id=user_id, role_key="GLOBAL_ADMIN", scope_type="GLOBAL"))
     await session.flush()
     return user_id
+
+
+@pytest.mark.asyncio
+async def test_create_local_user_without_session_returns_401(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    app = _build_app(session, redis_client, clock)
+
+    async with await _client(app) as client:
+        response = await client.post(
+            "/api/v1/admin/local-users",
+            json={"display_name": "New User", "email": "new@example.test", "password": "NewPassword123!"},
+        )
+
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
