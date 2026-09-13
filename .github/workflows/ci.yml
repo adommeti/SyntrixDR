@@ -1,5 +1,9 @@
 name: ci
 
+# Runs on the self-hosted Linux runner (labels: self-hosted, linux, syntrixdr-linux).
+# One-time runner preparation: infra/runner/setup-runner.sh (Docker, build deps, Playwright system libs, tool dirs).
+# Service containers and the e2e compose stack need Docker on the runner; nothing here needs sudo.
+
 on:
   pull_request:
     branches: [main]
@@ -16,24 +20,33 @@ env:
   PNPM_VERSION: "10.12.1"
   NEXT_TELEMETRY_DISABLED: "1"
   CI: "true"
+  # tool installs go to the runner user's home (no sudo on self-hosted)
+  TOOL_BIN: ${{ github.workspace }}/../_tools/bin
+  UV_TOOL_BIN_DIR: ${{ github.workspace }}/../_tools/bin
+  PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/../_tools/pw-browsers
 
 jobs:
   repo-hygiene:
     name: repo-hygiene
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, syntrixdr-linux]
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with: { fetch-depth: 0, clean: true }
       - run: git fetch origin main:refs/remotes/origin/main 2>/dev/null || true
+      - name: runner preflight
+        run: |
+          echo "runner: $(hostname) $(uname -sm)"
+          docker info >/dev/null 2>&1 || { echo "::error::Docker is not available to the runner user — run infra/runner/setup-runner.sh"; exit 1; }
+          mkdir -p "$TOOL_BIN" && echo "$TOOL_BIN" >> "$GITHUB_PATH"
       - run: scripts/repo-doctor.sh
 
   spec-frozen:
     name: docs/spec unchanged on non-spec branches
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, syntrixdr-linux]
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with: { fetch-depth: 0, clean: true }
       - name: Fail if any non-spec/ branch touches docs/spec
         env:
           HEAD_REF: ${{ github.head_ref }}
@@ -46,23 +59,25 @@ jobs:
 
   api:
     name: api (lint · type · tests · migrate-from-empty · contracts)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, syntrixdr-linux]
     needs: [repo-hygiene]
     services:
       postgres:
         image: pgvector/pgvector:0.8.6-pg16
         env: { POSTGRES_USER: drcc, POSTGRES_PASSWORD: drcc, POSTGRES_DB: drcc_test }
-        ports: ["5432:5432"]
+        ports: ["55432:5432"]      # host ports offset so nothing else on the runner collides
         options: >-
           --health-cmd "pg_isready -U drcc -d drcc_test" --health-interval 5s --health-timeout 5s --health-retries 20
       redis:
         image: redis:7.4-alpine
-        ports: ["6379:6379"]
+        ports: ["56379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      DATABASE_URL: postgresql+psycopg://drcc:drcc@localhost:5432/drcc_test
-      REDIS_URL: redis://localhost:6379/0
-      CELERY_BROKER_URL: redis://localhost:6379/0
+      DATABASE_URL: postgresql+psycopg://drcc:drcc@localhost:55432/drcc_test
+      REDIS_URL: redis://localhost:56379/0
+      CELERY_BROKER_URL: redis://localhost:56379/0
+      CELERY_RESULT_BACKEND: redis://localhost:56379/0
+      TESTCONTAINERS_RYUK_DISABLED: "true"   # testcontainers on a self-hosted runner: no reaper sidecar
       AI_ENABLED: "false"
       AUTH_LOCAL_ENABLED: "true"
       SESSION_SECRET: ci-only-not-a-secret
@@ -70,6 +85,7 @@ jobs:
       DRCC_TENANT_ID: 00000000-0000-0000-0000-000000000000
     steps:
       - uses: actions/checkout@v4
+        with: { clean: true }
       - name: Skip until apps/api exists (BUILD-01)
         id: gate
         run: '[ -f apps/api/pyproject.toml ] && echo ready=true >> "$GITHUB_OUTPUT" || echo ready=false >> "$GITHUB_OUTPUT"'
@@ -102,10 +118,14 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         working-directory: apps/api
         run: uv run pytest -q --no-header -p no:cacheprovider --junitxml=../../reports/api-junit.xml
+      - uses: pnpm/action-setup@v4   # version read from package.json "packageManager"
+        if: steps.gate.outputs.ready == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: pnpm }
       - name: contracts drift
         if: steps.gate.outputs.ready == 'true'
         run: |
-          corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
           pnpm install --frozen-lockfile
           make contracts
       - uses: actions/upload-artifact@v4
@@ -114,10 +134,11 @@ jobs:
 
   web:
     name: web (typecheck · lint · unit · build)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, syntrixdr-linux]
     needs: [repo-hygiene]
     steps:
       - uses: actions/checkout@v4
+        with: { clean: true }
       - name: Skip until apps/web exists (BUILD-01)
         id: gate
         run: '[ -f apps/web/package.json ] && echo ready=true >> "$GITHUB_OUTPUT" || echo ready=false >> "$GITHUB_OUTPUT"'
@@ -139,19 +160,19 @@ jobs:
 
   security:
     name: security (semgrep · bandit · pip-audit · pnpm audit · gitleaks · sbom · grype · checkov)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, syntrixdr-linux]
     needs: [repo-hygiene]
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with: { fetch-depth: 0, clean: true }
       - uses: actions/setup-python@v5
         with: { python-version: "${{ env.PYTHON_VERSION }}" }
       - uses: astral-sh/setup-uv@v6
       - uses: pnpm/action-setup@v4 # version read from package.json "packageManager"
       - uses: actions/setup-node@v4
         with: { node-version: "${{ env.NODE_VERSION }}" }
-      - name: install scanners
+      - name: install scanners (idempotent, user-local, no sudo)
         run: |
           uv tool install semgrep
           uv tool install bandit
@@ -171,11 +192,14 @@ jobs:
 
   e2e:
     name: e2e (playwright)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, syntrixdr-linux]
     needs: [api, web]
     if: github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'e2e')
+    env:
+      COMPOSE_PROJECT_NAME: syntrixdr-ci     # isolated from any dev stack on the same host
     steps:
       - uses: actions/checkout@v4
+        with: { clean: true }
       - name: Skip until tests/e2e/playwright.config.ts exists
         id: gate
         run: '[ -f tests/e2e/playwright.config.ts ] && echo ready=true >> "$GITHUB_OUTPUT" || echo ready=false >> "$GITHUB_OUTPUT"'
@@ -191,12 +215,15 @@ jobs:
       - if: steps.gate.outputs.ready == 'true'
         run: pnpm install --frozen-lockfile && (cd apps/api && uv sync --frozen && uv run alembic upgrade head) && make seed
       - if: steps.gate.outputs.ready == 'true'
-        run: pnpm --filter e2e exec playwright install --with-deps chromium
+        run: pnpm --filter e2e exec playwright install chromium   # system libs come from infra/runner/setup-runner.sh
       - if: steps.gate.outputs.ready == 'true'
         run: make e2e
       - if: steps.gate.outputs.ready == 'true'
         env: { AI_ENABLED: "false" }
         run: make e2e E2E_ARGS="--grep @ai-off"
+      - name: teardown compose stack
+        if: always() && steps.gate.outputs.ready == 'true'
+        run: docker compose down -v --remove-orphans || true
       - uses: actions/upload-artifact@v4
         if: always() && steps.gate.outputs.ready == 'true'
         with: { name: playwright-report, path: tests/e2e/playwright-report/, if-no-files-found: ignore }

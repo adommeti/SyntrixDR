@@ -36,14 +36,15 @@ Mailpit UI: http://localhost:8025 · API docs: http://localhost:8000/docs · Azu
 | `docs/adr/` · `docs/reviews/` | Engineering decisions · review/sign-off evidence |
 | `apps/api` · `apps/web` | FastAPI modular monolith · Next.js command center |
 | `packages/contracts` · `packages/ui` · `packages/config` | Generated API types · shared UI primitives · shared lint/ts config |
-| `infra/bicep` · `infra/docker` | Azure IaC · local container init |
+| `infra/bicep` · `infra/docker` · `infra/runner` | Azure IaC · local container init · self-hosted CI runner preparation |
 | `tests/e2e` · `tests/load` | Playwright · k6 |
 
 ## Working agreement
 
 One `BUILD-NN` increment = one `feat/build-NN-<slug>` branch = one squash-merged PR titled `BUILD-NN: …`, tagged `v0.NN.0`.
 `main` is protected; CI (`.github/workflows/ci.yml`) runs repo-hygiene, spec-frozen check, api, web, security, and e2e (on
-`main` or the `e2e` label). Verification checklist: `docs/spec/VERIFY.md`.
+`main` or the `e2e` label) on the self-hosted Linux runner (labels `self-hosted, linux, syntrixdr-linux`; host prep in
+`infra/runner/README.md`). Verification checklist: `docs/spec/VERIFY.md`.
 
 ## Licence
 
