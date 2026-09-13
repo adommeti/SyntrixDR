@@ -46,6 +46,14 @@ def _is_comparable_table(table_name: str | None) -> bool:
 def include_object(object_: Any, name: str | None, type_: str, reflected: bool, compare_to: Any) -> bool:
     if type_ == "table":
         return _is_comparable_table(name)
+    # For columns/indexes/constraints (including FKs), `object_.table` is the
+    # OWNING table (e.g. idempotency_keys for its user_id -> users.id FK), not
+    # the referenced one — so a FK into a stub table is still compared as long
+    # as its owning table is fully modeled. Verified: `alembic check` stays
+    # clean with idempotency_keys/outbox_events' FKs into the users/dr_events
+    # stubs (apps/api/tests/test_migrations.py). Re-check this if a future
+    # BUILD's model swaps `keep_existing=True` import order in a way that lets
+    # a stub table win over the real one.
     table = getattr(object_, "table", None)
     if table is not None:
         return _is_comparable_table(table.name)

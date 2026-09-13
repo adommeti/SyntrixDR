@@ -63,7 +63,7 @@ async def seed_golden(conn: AsyncConnection) -> None:
         ),
         {"id": uuid.uuid4(), "user_id": user_id, "now": now},
     )
-    print(f"seed: created Local GLOBAL_ADMIN {DEV_ADMIN_EMAIL} (password: {DEV_ADMIN_PASSWORD})")
+    print(f"seed: created Local GLOBAL_ADMIN {DEV_ADMIN_EMAIL} — see DEV_ADMIN_PASSWORD in seed.py")
 
 
 async def run(scenario: str) -> None:
