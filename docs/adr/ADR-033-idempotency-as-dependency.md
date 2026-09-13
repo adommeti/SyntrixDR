@@ -43,12 +43,11 @@ concurrent race for a fresh key (insert wrapped in `session.begin_nested()`, `In
 - Every future command route (BUILD-02 onward) must include the `if ctx.is_replay: return ...` guard
   explicitly — there is no framework-level enforcement that a route remembered to check it. `/drcc-transition-service`
   should reference this contract in its template/checklist so it isn't reintroduced ad hoc per module.
-- Known gap (flagged in code review, not yet a bug because no command route exists yet): the
-  expired-key-reset path (`idempotency.py`, the `existing is not None` branch after the active-row check)
-  does a SELECT then UPDATE with no row lock — two concurrent requests racing past an *expired* key could
-  both take the reset branch and both proceed as `is_replay=False`, double-executing the command. The
-  first real command builder should add `SELECT ... FOR UPDATE` on that read, or fold expiry into the
-  `begin_nested()`/unique-constraint retry path instead of a separate branch.
+- **Resolved** (issue #4, fixed ahead of BUILD-02): the expired-key-reset path's SELECT now uses
+  `.with_for_update()`. A concurrent request racing on the same expired key blocks on the row lock until
+  the winner's transaction commits, then re-reads the winner's now-current (non-expired, completed) row
+  and takes the active-row replay branch instead of also resetting and re-executing —
+  `apps/api/tests/test_idempotency.py::test_concurrent_expired_key_reset_is_not_a_double_execution`.
 - BUILD-01 proved this contract only against a test-only dummy route (`apps/api/tests/test_idempotency.py`)
   since no domain command endpoint exists yet — not a gap, just the honest state of an increment with zero
   command endpoints.

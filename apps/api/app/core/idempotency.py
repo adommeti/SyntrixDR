@@ -109,14 +109,20 @@ async def require_idempotency_key(
     request_hash = _hash_body(await request.body())
 
     # (key, user, route) is UNIQUE regardless of expiry, so an expired row is
-    # reset in place rather than replaced by a second insert.
+    # reset in place rather than replaced by a second insert. FOR UPDATE
+    # serializes concurrent requests on the same expired key: the loser blocks
+    # until the winner's transaction commits, then re-reads the winner's
+    # now-current (non-expired, completed) row and takes the replay branch
+    # below instead of also resetting and re-executing (issue #4).
     existing = (
         await session.execute(
-            select(IdempotencyKey).where(
+            select(IdempotencyKey)
+            .where(
                 IdempotencyKey.key == key,
                 IdempotencyKey.user_id == user_id,
                 IdempotencyKey.route == route,
             )
+            .with_for_update()
         )
     ).scalar_one_or_none()
 
