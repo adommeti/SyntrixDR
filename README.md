@@ -18,7 +18,7 @@ Synthetic/Anthropic AI adapters · Azure Container Apps + Bicep.
 brew install uv node@22 pnpm gh libpq && brew install --cask docker   # once
 cp .env.example .env
 make dev            # postgres+pgvector, redis, azurite, mailpit
-make install        # uv sync + pnpm install   (after BUILD-01 scaffolds apps/)
+make install        # uv sync + pnpm install + playwright browsers
 make db-upgrade
 make seed
 cd apps/api && uv run uvicorn app.main:app --reload --port 8000 &   # API

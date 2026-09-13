@@ -35,9 +35,12 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - name: Fail if any non-spec/ branch touches docs/spec
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if [[ "${{ github.head_ref }}" != spec/* ]]; then
-            changed="$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- docs/spec || true)"
+          if [[ "$HEAD_REF" != spec/* ]]; then
+            changed="$(git diff --name-only "origin/$BASE_REF...HEAD" -- docs/spec || true)"
             if [ -n "$changed" ]; then echo "docs/spec changed on a code branch:"; echo "$changed"; exit 1; fi
           fi
 
@@ -118,7 +121,7 @@ jobs:
       - name: Skip until apps/web exists (BUILD-01)
         id: gate
         run: '[ -f apps/web/package.json ] && echo ready=true >> "$GITHUB_OUTPUT" || echo ready=false >> "$GITHUB_OUTPUT"'
-      - uses: pnpm/action-setup@v4   # version read from package.json "packageManager"
+      - uses: pnpm/action-setup@v4 # version read from package.json "packageManager"
         if: steps.gate.outputs.ready == 'true'
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.ready == 'true'
@@ -145,7 +148,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "${{ env.PYTHON_VERSION }}" }
       - uses: astral-sh/setup-uv@v6
-      - uses: pnpm/action-setup@v4   # version read from package.json "packageManager"
+      - uses: pnpm/action-setup@v4 # version read from package.json "packageManager"
       - uses: actions/setup-node@v4
         with: { node-version: "${{ env.NODE_VERSION }}" }
       - name: install scanners
@@ -154,8 +157,10 @@ jobs:
           uv tool install bandit
           uv tool install pip-audit
           uv tool install checkov
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh -o /tmp/install-syft.sh
+          sh /tmp/install-syft.sh -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh -o /tmp/install-grype.sh
+          sh /tmp/install-grype.sh -b /usr/local/bin
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oP '"tag_name": "v\K[^"]+')_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks
       - name: run security gate
         env: { SECURITY_REQUIRE_ALL: "1", SECURITY_FAIL_ON: critical }
@@ -174,7 +179,7 @@ jobs:
       - name: Skip until tests/e2e/playwright.config.ts exists
         id: gate
         run: '[ -f tests/e2e/playwright.config.ts ] && echo ready=true >> "$GITHUB_OUTPUT" || echo ready=false >> "$GITHUB_OUTPUT"'
-      - uses: pnpm/action-setup@v4   # version read from package.json "packageManager"
+      - uses: pnpm/action-setup@v4 # version read from package.json "packageManager"
         if: steps.gate.outputs.ready == 'true'
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.ready == 'true'

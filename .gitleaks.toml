@@ -1,0 +1,14 @@
+title = "SyntrixDR gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Non-sensitive, publicly documented local-dev constants"
+regexes = [
+  # Azurite's fixed well-known development storage account key (D-217).
+  # Published by Microsoft (https://learn.microsoft.com/azure/storage/common/storage-configure-connection-string#configure-a-connection-string-for-azurite)
+  # and identical across every Azurite install worldwide; it is not a secret,
+  # rotatable, or unique to this repo.
+  '''Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==''',
+]
