@@ -3,20 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import (
-    Column,
-    DateTime,
-    Enum,
-    ForeignKey,
-    Index,
-    Table,
-    Text,
-    and_,
-    select,
-    text,
-)
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -125,38 +113,6 @@ class ReauthGrant(Base):
     __table_args__ = (Index("ix_reauth_grants_session", "session_id", text("expires_at DESC")),)
 
 
-# Minimal, partial-read-only Core Table for role_assignments (owned by users_teams_org BUILD-03 later)
-# SELECT * only; mutations are via policies_admin module (users_teams_org BUILD-03).
-# Marked 'partial_read_only' so alembic doesn't compare its shape against the migration schema.
-
-role_assignments_table = Table(
-    "role_assignments",
-    Base.metadata,
-    Column("id", PgUUID(as_uuid=True), primary_key=True),
-    Column("user_id", PgUUID(as_uuid=True), nullable=False),
-    Column("role_key", Text, nullable=False),
-    Column("scope_type", Text, nullable=False),
-    Column("scope_id", PgUUID(as_uuid=True), nullable=True),
-    Column("granted_by_user_id", PgUUID(as_uuid=True), nullable=True),
-    Column("created_at", DateTime(timezone=True), nullable=False),
-    Column("revoked_at", DateTime(timezone=True), nullable=True),
-    keep_existing=True,
-    info={"partial_read_only": True},
-)
-
-
-async def user_has_global_admin_role(session: AsyncSession, user_id: uuid.UUID) -> bool:
-    """Check if a user has the GLOBAL_ADMIN role globally."""
-    result = await session.execute(
-        select(1)
-        .select_from(role_assignments_table)
-        .where(
-            and_(
-                role_assignments_table.c.user_id == user_id,
-                role_assignments_table.c.role_key == "GLOBAL_ADMIN",
-                role_assignments_table.c.scope_type == "GLOBAL",
-                role_assignments_table.c.revoked_at.is_(None),
-            )
-        )
-    )
-    return result.scalar_one_or_none() is not None
+# The `role_assignments` partial-read-only stub from session a is gone — superseded by the real
+# `RoleAssignment` model in `app.users_teams_org.models` and `app.users_teams_org.authorization`
+# (session b). GLOBAL_ADMIN/TOTP checks go through `AuthorizationService`, not a local stub here.

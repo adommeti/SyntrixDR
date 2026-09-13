@@ -17,9 +17,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.clock import Clock, SystemClock
 from app.core.database import Base
 from app.core.errors import AppError, IdempotencyKeyRequiredError
-from app.core.external_refs import users_table
+from app.users_teams_org.models import User
 
-_ = users_table  # registers `users` (FK-resolution stub) on Base.metadata
+_ = User  # registers the real `users` table on Base.metadata (FK target for user_id below)
 
 IDEMPOTENCY_HEADER = "Idempotency-Key"
 

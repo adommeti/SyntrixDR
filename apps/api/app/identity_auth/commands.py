@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
@@ -116,18 +116,9 @@ async def local_login(
         TotpRequiredError: TOTP enabled but code not provided
         TotpInvalidError: TOTP code is invalid
     """
-    from app.core.external_refs import users_table
+    from app.users_teams_org.queries import find_local_user_id_by_email
 
-    # Find user by email (case-insensitive), inner join local_credentials
-    result = await session.execute(
-        select(users_table.c.id).where(
-            and_(
-                users_table.c.email == email.lower(),
-                users_table.c.identity_type == "LOCAL",
-            )
-        )
-    )
-    user_id = result.scalar_one_or_none()
+    user_id = await find_local_user_id_by_email(session, email)
 
     if user_id is None:
         # No enumeration: same error as wrong password
@@ -274,13 +265,10 @@ async def entra_callback(
     Returns:
         LoginResult with session_id and csrf_token
     """
-    from app.core.external_refs import users_table
+    from app.users_teams_org.queries import find_entra_user_id_by_object_id
 
     # Find or create user with identity_type='ENTRA' keyed by entra_object_id
-    result = await session.execute(
-        select(users_table.c.id).where(users_table.c.entra_object_id == entra_object_id)
-    )
-    user_id = result.scalar_one_or_none()
+    user_id = await find_entra_user_id_by_object_id(session, entra_object_id)
 
     if user_id is None:
         # Minimal user provisioning; create new user (full profile sync is users_teams_org's job)
@@ -497,21 +485,13 @@ async def request_password_reset(
         clock: Clock instance
         email: Email address (may not exist)
     """
-    from app.core.external_refs import users_table
+    from app.users_teams_org.queries import find_local_user_id_by_email
 
     settings = get_settings()
     now = clock.now()
 
     # Find LOCAL user by email
-    result = await session.execute(
-        select(users_table.c.id).where(
-            and_(
-                users_table.c.email == email.lower(),
-                users_table.c.identity_type == "LOCAL",
-            )
-        )
-    )
-    user_id = result.scalar_one_or_none()
+    user_id = await find_local_user_id_by_email(session, email)
 
     if user_id:
         # Generate token
@@ -619,8 +599,8 @@ async def enrol_totp(
     Raises:
         InvalidCredentialsError: User has no local credentials
     """
-    from app.core.external_refs import users_table
     from app.identity_auth.security import generate_totp_secret, totp_provisioning_uri
+    from app.users_teams_org.queries import get_user_email
 
     result = await session.execute(select(LocalCredential).where(LocalCredential.user_id == user_id))
     cred = result.scalar_one_or_none()
@@ -628,8 +608,7 @@ async def enrol_totp(
         raise InvalidCredentialsError()
 
     # Get user email for provisioning URI
-    result = await session.execute(select(users_table.c.email).where(users_table.c.id == user_id))
-    email = result.scalar_one_or_none()
+    email = await get_user_email(session, user_id)
 
     secret = generate_totp_secret()
     provisioning_uri = totp_provisioning_uri(secret, email or "unknown@example.com")

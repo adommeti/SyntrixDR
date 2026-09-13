@@ -11,9 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
-from app.core.external_refs import dr_events_table, users_table
+from app.core.external_refs import dr_events_table
+from app.users_teams_org.models import User
 
-_ = (users_table, dr_events_table)  # registers FK-resolution stubs on Base.metadata
+_ = (User, dr_events_table)  # registers users (real)/dr_events (stub) on Base.metadata
 
 
 def _now_utc() -> datetime:
