@@ -389,4 +389,13 @@ async def test_create_local_user_replay_does_not_create_a_second_user(
         text("SELECT COUNT(*) AS cnt FROM users WHERE email = 'replay@example.test'")
     )
     assert count.one().cnt == 1
+
+    audit_count = await session.execute(
+        text(
+            "SELECT COUNT(*) AS cnt FROM audit_events "
+            "WHERE action = 'AUTH_LOCAL_USER_CREATED' AND entity_id::text = :uid"
+        ),
+        {"uid": first.json()["user_id"]},
+    )
+    assert audit_count.one().cnt == 1
     await redis_client.delete(f"drcc:session:{session_id}")
