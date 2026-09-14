@@ -4,6 +4,232 @@
  */
 
 export interface paths {
+    "/api/v1/admin/local-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Create Local User
+         * @description High-risk, Global-Admin-only, reauth-guarded (D-235/D-228). A real domain command (not a
+         *     session endpoint like identity_auth's routes), so D-215 applies: Idempotency-Key required.
+         */
+        post: operations["post_create_local_user_api_v1_admin_local_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Csrf
+         * @description GET /api/v1/auth/csrf — return the CSRF token bound to the current session.
+         */
+        get: operations["get_csrf_api_v1_auth_csrf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/entra/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entra Callback
+         * @description GET /api/v1/auth/entra/callback — OIDC callback; establishes the session cookie.
+         */
+        get: operations["get_entra_callback_api_v1_auth_entra_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/entra/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entra Login
+         * @description GET /api/v1/auth/entra/login — redirect to the Entra OIDC authorization endpoint.
+         */
+        get: operations["get_entra_login_api_v1_auth_entra_login_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/local/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Local Login
+         * @description POST /api/v1/auth/local/login
+         *
+         *     Local username/password login. No CSRF required (no session yet).
+         *     No Idempotency-Key required (session endpoints, not domain commands).
+         */
+        post: operations["post_local_login_api_v1_auth_local_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/local/password-reset/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Password Reset Confirm
+         * @description POST /api/v1/auth/local/password-reset/confirm — consume the token, set a new password.
+         */
+        post: operations["post_password_reset_confirm_api_v1_auth_local_password_reset_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/local/password-reset/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Password Reset Request
+         * @description POST /api/v1/auth/local/password-reset/request
+         *
+         *     Always returns success — no account enumeration. No auth, no CSRF, no Idempotency-Key.
+         */
+        post: operations["post_password_reset_request_api_v1_auth_local_password_reset_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/local/totp/enrol": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Totp Enrol
+         * @description POST /api/v1/auth/local/totp/enrol — start TOTP enrolment for the current Local user.
+         */
+        post: operations["post_totp_enrol_api_v1_auth_local_totp_enrol_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/local/totp/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Totp Verify
+         * @description POST /api/v1/auth/local/totp/verify — confirm TOTP enrolment / verify a code.
+         */
+        post: operations["post_totp_verify_api_v1_auth_local_totp_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Logout
+         * @description POST /api/v1/auth/logout — terminate the current session. CSRF required.
+         */
+        post: operations["post_logout_api_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/reauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Reauth
+         * @description POST /api/v1/auth/reauth — step-up via password/TOTP/Entra, issues a 5-min reauth grant.
+         */
+        post: operations["post_reauth_api_v1_auth_reauth_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -21,10 +247,254 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Me Route */
+        get: operations["get_me_route_api_v1_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Teams Route */
+        get: operations["list_teams_route_api_v1_teams_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/teams/{team_id}/workload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Team Workload Route */
+        get: operations["get_team_workload_route_api_v1_teams__team_id__workload_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get User Route */
+        get: operations["get_user_route_api_v1_users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
+    schemas: {
+        /** CreateLocalUserRequest */
+        CreateLocalUserRequest: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /** CsrfTokenResponse */
+        CsrfTokenResponse: {
+            /** Csrf Token */
+            csrf_token: string;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /** LocalLoginRequest */
+        LocalLoginRequest: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+            /** Totp Code */
+            totp_code?: string | null;
+        };
+        /** LocalLoginResponse */
+        LocalLoginResponse: {
+            /** Csrf Token */
+            csrf_token: string;
+            /** Session Id */
+            session_id: string;
+            /** User Id */
+            user_id: string;
+        };
+        /** LogoutResponse */
+        LogoutResponse: {
+            /** Message */
+            message: string;
+        };
+        /** MeResponse */
+        MeResponse: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Identity Type */
+            identity_type: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Job Title */
+            job_title: string | null;
+        };
+        /** PasswordResetConfirmRequest */
+        PasswordResetConfirmRequest: {
+            /** New Password */
+            new_password: string;
+            /** Token */
+            token: string;
+        };
+        /** PasswordResetConfirmResponse */
+        PasswordResetConfirmResponse: {
+            /** Message */
+            message: string;
+        };
+        /** PasswordResetRequestBody */
+        PasswordResetRequestBody: {
+            /** Email */
+            email: string;
+        };
+        /** PasswordResetRequestResponse */
+        PasswordResetRequestResponse: {
+            /** Message */
+            message: string;
+        };
+        /** ReauthRequest */
+        ReauthRequest: {
+            /** Method */
+            method: string;
+            /** Password */
+            password?: string | null;
+            /** Totp Code */
+            totp_code?: string | null;
+        };
+        /** ReauthResponse */
+        ReauthResponse: {
+            /** Expires At */
+            expires_at: string;
+            /** Granted At */
+            granted_at: string;
+        };
+        /** TeamListResponse */
+        TeamListResponse: {
+            /** Teams */
+            teams: components["schemas"]["TeamResponse"][];
+        };
+        /** TeamResponse */
+        TeamResponse: {
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Manager User Id */
+            manager_user_id: string | null;
+            /** Name */
+            name: string;
+        };
+        /** TeamWorkloadResponse */
+        TeamWorkloadResponse: {
+            /** Member Count */
+            member_count: number;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+        };
+        /** TotpEnrolResponse */
+        TotpEnrolResponse: {
+            /** Provisioning Uri */
+            provisioning_uri: string;
+            /** Secret */
+            secret: string;
+        };
+        /** TotpVerifyRequest */
+        TotpVerifyRequest: {
+            /** Code */
+            code: string;
+        };
+        /** TotpVerifyResponse */
+        TotpVerifyResponse: {
+            /** Message */
+            message: string;
+        };
+        /** UserResponse */
+        UserResponse: {
+            /** Avatar Uri */
+            avatar_uri: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Identity Type */
+            identity_type: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Job Title */
+            job_title: string | null;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+        };
+    };
     responses: never;
     parameters: never;
     requestBodies: never;
@@ -33,6 +503,304 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    post_create_local_user_api_v1_admin_local_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLocalUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_csrf_api_v1_auth_csrf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsrfTokenResponse"];
+                };
+            };
+        };
+    };
+    get_entra_callback_api_v1_auth_entra_callback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalLoginResponse"];
+                };
+            };
+        };
+    };
+    get_entra_login_api_v1_auth_entra_login_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    post_local_login_api_v1_auth_local_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalLoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_password_reset_confirm_api_v1_auth_local_password_reset_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetConfirmResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_password_reset_request_api_v1_auth_local_password_reset_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordResetRequestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_totp_enrol_api_v1_auth_local_totp_enrol_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpEnrolResponse"];
+                };
+            };
+        };
+    };
+    post_totp_verify_api_v1_auth_local_totp_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpVerifyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_logout_api_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogoutResponse"];
+                };
+            };
+        };
+    };
+    post_reauth_api_v1_auth_reauth_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReauthRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReauthResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -51,6 +819,108 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    get_me_route_api_v1_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+        };
+    };
+    list_teams_route_api_v1_teams_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamListResponse"];
+                };
+            };
+        };
+    };
+    get_team_workload_route_api_v1_teams__team_id__workload_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamWorkloadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_route_api_v1_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
