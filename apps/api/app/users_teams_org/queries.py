@@ -9,17 +9,29 @@ from app.users_teams_org.models import RoleAssignment, Team, TeamMembership, Use
 
 
 async def find_local_user_id_by_email(session: AsyncSession, email: str) -> uuid.UUID | None:
-    """Case-insensitive lookup of an active LOCAL user's id by email."""
+    """Case-insensitive lookup of an active LOCAL user's id by email. A deactivated
+    (`is_active=False`) user must not be able to log in, so it's filtered here rather than in
+    every caller."""
     result = await session.execute(
         select(User.id).where(
-            and_(User.email == email.lower(), User.identity_type == "LOCAL", User.deleted_at.is_(None))
+            and_(
+                User.email == email.lower(),
+                User.identity_type == "LOCAL",
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
         )
     )
     return result.scalar_one_or_none()
 
 
 async def find_entra_user_id_by_object_id(session: AsyncSession, entra_object_id: str) -> uuid.UUID | None:
-    """Lookup an active ENTRA user's id by their Entra object id."""
+    """Lookup a non-deleted ENTRA user's id by their Entra object id. Deliberately does not
+    exclude `is_active=False` accounts: `entra_callback` is find-or-create keyed on the unique
+    `entra_object_id`, so filtering here would make it try to create a duplicate row and hit the
+    unique constraint instead of the correct behavior (deny the reactivated/deactivated session
+    somewhere authorization-aware). Not compared case-insensitively — Entra object ids are GUIDs,
+    not user-typed text like email."""
     result = await session.execute(
         select(User.id).where(and_(User.entra_object_id == entra_object_id, User.deleted_at.is_(None)))
     )

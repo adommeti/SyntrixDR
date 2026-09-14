@@ -4,7 +4,7 @@ import uuid
 
 import pyotp
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import AuditEvent
@@ -304,3 +304,20 @@ async def test_case_insensitive_email_lookup(
 
     assert result.user_id == user_id
     assert result.session_id is not None
+
+
+@pytest.mark.asyncio
+async def test_deactivated_user_cannot_log_in(
+    session: AsyncSession, local_user_with_password: tuple[uuid.UUID, str], clock: FakeClock, redis_client
+) -> None:
+    """A deactivated (`is_active=False`) Local user is denied login, same error as wrong password
+    (no enumeration of account state)."""
+    user_id, password = local_user_with_password
+    email = f"{user_id}@example.test"
+    await session.execute(text("UPDATE users SET is_active = false WHERE id = :id"), {"id": user_id})
+    await session.flush()
+
+    store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
+
+    with pytest.raises(InvalidCredentialsError):
+        await local_login(session, store, clock, email=email, password=password)

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.clock import FakeClock
 from app.dr_events.participants import (
@@ -151,3 +152,84 @@ async def test_visible_event_ids_for_user_returns_only_active_rows(session: Asyn
     result = await session.execute(visible_event_ids_for_user(user_id))
     visible_ids = {row[0] for row in result.all()}
     assert visible_ids == {visible_event}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_enrol_participant_does_not_error(engine: AsyncEngine) -> None:
+    """A real (dr_event_id, user_id, source) race: an uncommitted competing INSERT holds the
+    unique-index slot while `enrol_participant`'s own existing-row check (under READ COMMITTED)
+    can't see it yet, so it also attempts to insert. Its INSERT blocks at the DB level until the
+    competitor commits, then fails with a unique violation — that failure must be caught as a
+    no-op, not bubble up, leaving exactly one active row."""
+    user_id = uuid.uuid4()
+    event_id = uuid.uuid4()
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO users (id, identity_type, display_name, email) "
+                "VALUES (:id, 'LOCAL', 'Test User', :email)"
+            ),
+            {"id": user_id, "email": f"{user_id}@example.test"},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO dr_events (id, name, event_type, status, created_by_user_id) "
+                "VALUES (:id, 'Test Event', 'PLANNED_DR', 'PLANNED', :creator_id)"
+            ),
+            {"id": event_id, "creator_id": user_id},
+        )
+
+    ready = asyncio.Event()
+
+    async def _competitor_holds_uncommitted_row() -> None:
+        """Inserts the competing row directly (bypassing enrol_participant) and holds the
+        transaction open — uncommitted — until `enrol_participant`'s own insert has had a chance
+        to queue behind it at the DB level, then commits itself (must not defer the commit to
+        after gather() returns — the other racer's insert blocks on this one committing, so
+        deferring it there would deadlock the two coroutines against each other)."""
+        conn = await engine.connect()
+        try:
+            async with conn.begin():
+                await conn.execute(
+                    text(
+                        "INSERT INTO dr_event_participants (id, dr_event_id, user_id, source) "
+                        "VALUES (:id, :eid, :uid, 'ROLE')"
+                    ),
+                    {"id": uuid.uuid4(), "eid": event_id, "uid": user_id},
+                )
+                ready.set()
+                await asyncio.sleep(0.2)
+        finally:
+            await conn.close()
+
+    async def _run_enrol_participant() -> None:
+        await ready.wait()
+        conn = await engine.connect()
+        try:
+            sess = AsyncSession(bind=conn, expire_on_commit=False)
+            await enrol_participant(sess, event_id, user_id, "ROLE")
+            await sess.commit()
+        finally:
+            await conn.close()
+
+    try:
+        await asyncio.gather(_competitor_holds_uncommitted_row(), _run_enrol_participant())
+
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text(
+                    "SELECT COUNT(*) AS cnt FROM dr_event_participants "
+                    "WHERE dr_event_id = :eid AND user_id = :uid AND source = 'ROLE' "
+                    "AND removed_at IS NULL"
+                ),
+                {"eid": event_id, "uid": user_id},
+            )
+            assert result.one().cnt == 1
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("DELETE FROM dr_event_participants WHERE dr_event_id = :eid"), {"eid": event_id}
+            )
+            await conn.execute(text("DELETE FROM dr_events WHERE id = :id"), {"id": event_id})
+            await conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})

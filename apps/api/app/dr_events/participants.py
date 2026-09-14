@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import Select, and_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import Clock, SystemClock
@@ -19,7 +20,10 @@ async def enrol_participant(
     added_by_user_id: uuid.UUID | None = None,
 ) -> None:
     """Idempotent: re-enrolling an already-active `(dr_event_id, user_id, source)` is a no-op,
-    matching the partial unique index `ux_dr_event_participants_active` (D-222)."""
+    matching the partial unique index `ux_dr_event_participants_active` (D-222). The insert is
+    wrapped in a savepoint so two concurrent enrolments for the same key race safely: the loser's
+    `IntegrityError` (from the unique index) is swallowed as a no-op instead of bubbling as a 500,
+    the same pattern as `core/idempotency.py`'s fresh-key race."""
     existing = await session.execute(
         select(DrEventParticipant.id).where(
             and_(
@@ -32,15 +36,19 @@ async def enrol_participant(
     )
     if existing.scalar_one_or_none() is not None:
         return
-    session.add(
-        DrEventParticipant(
-            dr_event_id=dr_event_id,
-            user_id=user_id,
-            source=source,
-            added_by_user_id=added_by_user_id,
-        )
-    )
-    await session.flush()
+    try:
+        async with session.begin_nested():
+            session.add(
+                DrEventParticipant(
+                    dr_event_id=dr_event_id,
+                    user_id=user_id,
+                    source=source,
+                    added_by_user_id=added_by_user_id,
+                )
+            )
+            await session.flush()
+    except IntegrityError:
+        pass
 
 
 async def remove_participant(
