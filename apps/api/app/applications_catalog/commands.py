@@ -173,7 +173,7 @@ async def update_application(
     # lock, two concurrent PATCH requests can both read version=N, both pass this check, and
     # both commit as version=N+1, silently discarding one of them (found in review). The lock
     # forces the second transaction to block until the first commits, so it re-reads the
-    # already-incremented version and correctly hits the mismatch below.
+    # already-incremented version and correctly hits the mismatch below (ADR-036).
     application = await session.get(Application, application_id, with_for_update=True)
     if application is None:
         raise ApplicationNotFoundError()
@@ -330,6 +330,7 @@ async def update_tiers(
     now = clock.now()
     result_rows: list[Tier] = []
     for update in updates:
+        # `with_for_update()` — see ADR-036; same atomic-version-check pattern as `update_application`.
         tier_result = await session.execute(select(Tier).where(Tier.code == update.code).with_for_update())
         tier = tier_result.scalar_one_or_none()
         if tier is None:

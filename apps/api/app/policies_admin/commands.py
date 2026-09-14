@@ -99,7 +99,7 @@ async def set_policy_value(
     # COMMITTED could both commit, leaving two simultaneously-active rows for the same
     # key/scope, violating invariant #11/#12 (found in review). There is no partial unique
     # index to lean on instead since `policy_values` has no `superseded_at IS NULL` constraint
-    # in the frozen schema (schema_v1.sql:588) and this module cannot add one.
+    # in the frozen schema (schema_v1.sql:588) and this module cannot add one (ADR-036).
     lock_key = f"{definition.id}:{scope_type}:{scope_id}"
     await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"), {"lock_key": lock_key})
 
