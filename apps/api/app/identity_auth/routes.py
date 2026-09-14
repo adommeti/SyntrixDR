@@ -80,10 +80,11 @@ async def post_local_login(
 async def post_logout(
     session: DbSession,
     store: SessionStore,
+    clock: ClockDep,
     session_data: CurrentSession,
 ) -> LogoutResponse:
     """POST /api/v1/auth/logout — terminate the current session. CSRF required."""
-    await logout(session, store, session_data=session_data)
+    await logout(session, store, clock, session_data=session_data)
     return LogoutResponse(message="Logged out.")
 
 

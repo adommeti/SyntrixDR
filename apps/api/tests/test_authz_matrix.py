@@ -122,6 +122,15 @@ async def test_global_readonly_grants_only_the_read_capability(session: AsyncSes
     assert (
         await AuthorizationService.can(session, reader, Capability.EVENT_LIFECYCLE_COMMAND, Scope()) is False
     )
+    # Also denied for a capability GLOBAL_READONLY isn't even listed against in GRANTS at all
+    # (not just a plain `True` row) — rules out the scope-matching branch accidentally granting
+    # it through an unrelated OWN_TEAM/SCOPE marker.
+    assert (
+        await AuthorizationService.can(
+            session, reader, Capability.OWN_TEAM_REASSIGNMENT, Scope(owning_team_id=uuid.uuid4())
+        )
+        is False
+    )
 
 
 @pytest.mark.asyncio

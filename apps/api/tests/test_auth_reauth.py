@@ -14,7 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import AuditEvent
 from app.core.clock import FakeClock
 from app.core.errors import AppError, app_error_handler
-from app.identity_auth.commands import AccountLockedError, InvalidCredentialsError, TotpInvalidError, reauth
+from app.identity_auth.commands import (
+    AccountLockedError,
+    InvalidCredentialsError,
+    TotpInvalidError,
+    local_login,
+    reauth,
+)
 from app.identity_auth.dependencies import ReauthRequiredError, require_reauth
 from app.identity_auth.models import LocalCredential, ReauthGrant, SessionRecord
 from app.identity_auth.security import PasswordHasher, generate_totp_secret
@@ -435,6 +441,82 @@ async def test_repeated_wrong_totp_reauth_locks_the_account(
             session_data=session_data,
             method="TOTP",
             totp_code="000000",
+        )
+
+
+@pytest.mark.asyncio
+async def test_reauth_failures_lock_out_local_login_too(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """`local_login` and `/auth/reauth` share the same D-235 lockout counter on
+    `local_credentials` by design — one 10-failures/15-min policy per account, not per
+    surface. Pin that this is intentional and verified: failed `reauth` attempts alone can lock
+    out a subsequent `local_login`, and the reverse also holds."""
+    user_id, plaintext_password = local_user_with_credentials
+    email = (
+        await session.execute(text("SELECT email FROM users WHERE id = :uid"), {"uid": user_id})
+    ).scalar_one()
+    lockout_threshold = 10
+
+    for _ in range(lockout_threshold):
+        with pytest.raises((InvalidCredentialsError, AccountLockedError)):
+            await reauth(
+                session,
+                store=None,  # type: ignore
+                clock=clock,
+                session_data=session_data,
+                method="PASSWORD",
+                password="WrongPassword123!",
+            )
+
+    # The account is now locked purely from reauth guesses — local_login is blocked too,
+    # even with the correct password.
+    with pytest.raises(AccountLockedError):
+        await local_login(
+            session,
+            store=None,  # type: ignore
+            clock=clock,
+            email=email,
+            password=plaintext_password,
+        )
+
+
+@pytest.mark.asyncio
+async def test_local_login_failures_lock_out_reauth_too(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Reverse of the above: failed `local_login` attempts alone can lock out a subsequent
+    `/auth/reauth`, proving the shared counter is symmetric."""
+    user_id, plaintext_password = local_user_with_credentials
+    email = (
+        await session.execute(text("SELECT email FROM users WHERE id = :uid"), {"uid": user_id})
+    ).scalar_one()
+    lockout_threshold = 10
+
+    for _ in range(lockout_threshold):
+        with pytest.raises((InvalidCredentialsError, AccountLockedError)):
+            await local_login(
+                session,
+                store=None,  # type: ignore
+                clock=clock,
+                email=email,
+                password="WrongPassword123!",
+            )
+
+    with pytest.raises(AccountLockedError):
+        await reauth(
+            session,
+            store=None,  # type: ignore
+            clock=clock,
+            session_data=session_data,
+            method="PASSWORD",
+            password=plaintext_password,
         )
 
 

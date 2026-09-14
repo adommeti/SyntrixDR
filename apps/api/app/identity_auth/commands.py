@@ -399,6 +399,7 @@ async def entra_callback(
 async def logout(
     session: AsyncSession,
     store: SessionStore,
+    clock: Clock,
     *,
     session_data: SessionData,
 ) -> None:
@@ -407,9 +408,10 @@ async def logout(
     Args:
         session: AsyncSession for DB updates
         store: SessionStore for revocation
+        clock: Clock for the revocation timestamp
         session_data: The current session data
     """
-    now = datetime.now()
+    now = clock.now()
 
     # Revoke from Redis
     await store.revoke(session_data.session_id)
