@@ -114,10 +114,15 @@ def visible_event_ids_for_user(user_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
 
 
 async def user_can_see_event(session: AsyncSession, user_id: uuid.UUID, dr_event_id: uuid.UUID) -> bool:
-    """Global Admin implicit OR an active explicit participant row (D-222). Goes through
+    """Global Admin implicit, OR GLOBAL_READONLY's separately-granted global visibility
+    (D-222: Auditor/Executive), OR an active explicit participant row. Goes through
     `AuthorizationService.is_global_admin` (not a raw role-table check) so a LOCAL GLOBAL_ADMIN
     without TOTP enrolled (D-235) doesn't get implicit visibility either — found in review that a
-    second, independent GLOBAL_ADMIN check here would have silently bypassed that same gate."""
+    second, independent GLOBAL_ADMIN check here would have silently bypassed that same gate.
+    GLOBAL_READONLY was missing entirely until a later review pass caught it — this only grants
+    read visibility, never the mutation capabilities `AuthorizationService.can()` gates."""
     if await AuthorizationService.is_global_admin(session, user_id):
+        return True
+    if await AuthorizationService.is_global_readonly(session, user_id):
         return True
     return await is_participant(session, dr_event_id, user_id)

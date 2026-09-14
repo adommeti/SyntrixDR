@@ -246,6 +246,16 @@ class AuthorizationService:
         )
 
     @staticmethod
+    async def is_global_readonly(session: AsyncSession, actor_id: uuid.UUID) -> bool:
+        """True iff `actor_id` holds the GLOBAL_READONLY role — RBAC_MATRIX.md's only
+        read-labeled row (D-222: Auditor/Executive visibility via a separately granted global
+        read-only role, not per-Event enrolment). Callers needing Event visibility (not the
+        broader per-capability grants in `can()`) should use this, not `can()` directly — found
+        in review that `dr_events.participants.user_can_see_event` didn't check this at all."""
+        roles = await list_active_roles(session, actor_id)
+        return any(r.role_key == "GLOBAL_READONLY" for r in roles)
+
+    @staticmethod
     async def can(
         session: AsyncSession, actor_id: uuid.UUID, capability: Capability, scope: Scope | None = None
     ) -> bool:

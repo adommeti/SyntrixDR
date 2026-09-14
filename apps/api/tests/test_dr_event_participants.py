@@ -115,6 +115,20 @@ async def test_user_can_see_event_true_for_global_admin_with_zero_rows(session: 
 
 
 @pytest.mark.asyncio
+async def test_user_can_see_event_true_for_global_readonly_with_zero_rows(session: AsyncSession) -> None:
+    """GLOBAL_READONLY (Auditor/Executive) gets implicit visibility of every event via a
+    separately granted role, never per-Event enrolment (D-222, RBAC_MATRIX.md) — found in review
+    that `user_can_see_event` never checked this role at all, silently denying an Auditor every
+    event they hadn't also been individually enrolled in."""
+    user_id = await _create_user(session)
+    event_id = await _create_dr_event(session)
+    session.add(RoleAssignment(user_id=user_id, role_key="GLOBAL_READONLY", scope_type="GLOBAL"))
+    await session.flush()
+
+    assert await user_can_see_event(session, user_id, event_id) is True
+
+
+@pytest.mark.asyncio
 async def test_user_can_see_event_false_for_non_participant_non_admin(session: AsyncSession) -> None:
     user_id = await _create_user(session)
     event_id = await _create_dr_event(session)
