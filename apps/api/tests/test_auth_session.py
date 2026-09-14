@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 from redis.asyncio import Redis
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import FakeClock
@@ -214,12 +215,16 @@ class TestGetCurrentSessionDependency:
         async def _get_clock() -> FakeClock:
             return clock
 
+        async def _get_db_session() -> AsyncSession:
+            return session
+
         async def _get_session_dependency(
             request: Request,
             store: RedisSessionStore = Depends(_get_store),  # noqa: B008
             clock: FakeClock = Depends(_get_clock),  # noqa: B008
+            db_session: AsyncSession = Depends(_get_db_session),  # noqa: B008
         ) -> SessionData:
-            return await get_current_session(request, store, clock)
+            return await get_current_session(request, store, clock, db_session)
 
         @app.get("/api/v1/_test-session")
         async def session_route(session_data: SessionData = Depends(_get_session_dependency)) -> JSONResponse:  # noqa: ANN001, B008
@@ -402,3 +407,35 @@ class TestGetCurrentSessionDependency:
 
         # Cleanup
         await redis_client.delete(f"drcc:session:{session_id}")
+
+    @pytest.mark.asyncio
+    async def test_deactivated_user_session_is_rejected(
+        self, redis_client: Redis, session: AsyncSession, clock: FakeClock, seed_user: uuid.UUID
+    ) -> None:
+        """A session created before the user was deactivated must stop working immediately, not
+        keep being accepted and refreshed until its normal idle/absolute expiry — found in review:
+        `get_current_session` only checked Redis TTLs, never the Postgres user record, so a
+        deactivated administrator could keep calling privileged endpoints with an existing
+        session. Revokes the Redis session too, as defense in depth."""
+        app, store = self._build_app(redis_client, session, clock)
+        session_id = uuid.uuid4()
+
+        await store.create(session_id, seed_user, "LOCAL", clock)
+        cookies = {"drcc_session": str(session_id)}
+
+        # Valid before deactivation.
+        async with await self._client(app) as client:
+            response = await client.get("/api/v1/_test-session", cookies=cookies)
+        assert response.status_code == 200
+
+        await session.execute(text("UPDATE users SET is_active = false WHERE id = :id"), {"id": seed_user})
+        await session.commit()
+
+        async with await self._client(app) as client:
+            response = await client.get("/api/v1/_test-session", cookies=cookies)
+
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "SESSION_EXPIRED"
+
+        # The Redis session itself must be revoked, not just rejected at this layer.
+        assert await store.read(str(session_id)) is None

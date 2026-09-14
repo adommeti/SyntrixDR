@@ -14,8 +14,10 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import Clock, FakeClock
+from app.core.database import get_request_session
 from app.core.errors import AppError, app_error_handler
 from app.identity_auth.dependencies import CurrentSession, RequireCsrfDependency, get_clock
 from app.identity_auth.session_store import RedisSessionStore
@@ -23,7 +25,7 @@ from app.identity_auth.session_store import RedisSessionStore
 pytestmark = [pytest.mark.api, pytest.mark.auth, pytest.mark.integration]
 
 
-def _build_app(redis_client: Redis, clock: FakeClock) -> FastAPI:
+def _build_app(redis_client: Redis, clock: FakeClock, session: AsyncSession) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(AppError, app_error_handler)
     app.state.session_store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
@@ -31,7 +33,11 @@ def _build_app(redis_client: Redis, clock: FakeClock) -> FastAPI:
     async def _clock_override() -> Clock:
         return clock
 
+    async def _session_override() -> AsyncSession:
+        return session
+
     app.dependency_overrides[get_clock] = _clock_override
+    app.dependency_overrides[get_request_session] = _session_override
 
     @app.get("/api/v1/auth/csrf")
     async def get_csrf(session_data: CurrentSession) -> JSONResponse:
@@ -56,9 +62,11 @@ async def _client(app: FastAPI) -> AsyncClient:
 
 
 @pytest.mark.asyncio
-async def test_get_csrf_without_session_returns_401(redis_client: Redis, clock: FakeClock) -> None:
+async def test_get_csrf_without_session_returns_401(
+    redis_client: Redis, clock: FakeClock, session: AsyncSession
+) -> None:
     """GET /api/v1/auth/csrf without a session cookie -> 401 SESSION_EXPIRED."""
-    app = _build_app(redis_client, clock)
+    app = _build_app(redis_client, clock, session)
 
     async with await _client(app) as client:
         response = await client.get("/api/v1/auth/csrf")
@@ -69,10 +77,10 @@ async def test_get_csrf_without_session_returns_401(redis_client: Redis, clock: 
 
 @pytest.mark.asyncio
 async def test_get_csrf_with_valid_session_returns_token(
-    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID, session: AsyncSession
 ) -> None:
     """GET /api/v1/auth/csrf with a valid session -> returns the session's csrf_token."""
-    app = _build_app(redis_client, clock)
+    app = _build_app(redis_client, clock, session)
     store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
     session_id = uuid.uuid4()
     created = await store.create(session_id, seed_user, "LOCAL", clock)
@@ -88,10 +96,10 @@ async def test_get_csrf_with_valid_session_returns_token(
 
 @pytest.mark.asyncio
 async def test_post_without_csrf_header_returns_403(
-    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID, session: AsyncSession
 ) -> None:
     """POST to a CSRF-protected endpoint without X-CSRF-Token -> 403 CSRF_TOKEN_INVALID."""
-    app = _build_app(redis_client, clock)
+    app = _build_app(redis_client, clock, session)
     store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
     session_id = uuid.uuid4()
     await store.create(session_id, seed_user, "LOCAL", clock)
@@ -109,10 +117,10 @@ async def test_post_without_csrf_header_returns_403(
 
 @pytest.mark.asyncio
 async def test_post_with_wrong_csrf_token_returns_403(
-    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID, session: AsyncSession
 ) -> None:
     """POST with the wrong X-CSRF-Token -> 403 CSRF_TOKEN_INVALID."""
-    app = _build_app(redis_client, clock)
+    app = _build_app(redis_client, clock, session)
     store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
     session_id = uuid.uuid4()
     await store.create(session_id, seed_user, "LOCAL", clock)
@@ -133,10 +141,10 @@ async def test_post_with_wrong_csrf_token_returns_403(
 
 @pytest.mark.asyncio
 async def test_post_with_correct_csrf_token_succeeds(
-    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+    redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID, session: AsyncSession
 ) -> None:
     """POST with the correct X-CSRF-Token -> request proceeds, 200."""
-    app = _build_app(redis_client, clock)
+    app = _build_app(redis_client, clock, session)
     store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
     session_id = uuid.uuid4()
     created = await store.create(session_id, seed_user, "LOCAL", clock)
@@ -158,9 +166,11 @@ async def test_post_with_correct_csrf_token_succeeds(
 
 
 @pytest.mark.asyncio
-async def test_login_does_not_require_csrf(redis_client: Redis, clock: FakeClock) -> None:
+async def test_login_does_not_require_csrf(
+    redis_client: Redis, clock: FakeClock, session: AsyncSession
+) -> None:
     """POST /api/v1/auth/local/login has no session yet, so it carries no CSRF guard."""
-    app = _build_app(redis_client, clock)
+    app = _build_app(redis_client, clock, session)
 
     async with await _client(app) as client:
         response = await client.post("/api/v1/auth/local/login", json={})

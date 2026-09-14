@@ -54,17 +54,30 @@ async def get_current_session(
     request: Request,
     store: RedisSessionStore,
     clock: Clock,
+    session: AsyncSession,
 ) -> SessionData:
     """Read and validate a session from the 'drcc_session' cookie.
 
-    Raises SessionExpiredError if the session is missing, invalid, or expired.
+    Raises SessionExpiredError if the session is missing, invalid, expired, or belongs to a
+    user who has since been deactivated or soft-deleted. A Redis session created before
+    deactivation would otherwise keep working indefinitely — `touch()` only knows about Redis
+    TTLs, not the Postgres user record — letting a deactivated administrator keep calling
+    privileged endpoints with their existing session (found in review). Checked on every
+    authenticated request rather than only revoking at deactivation time, since a session
+    created on another device/browser after deactivation would still exist to revoke.
     """
+    from app.users_teams_org.queries import is_user_active
+
     session_id = request.cookies.get("drcc_session")
     if not session_id:
         raise SessionExpiredError()
 
     session_data = await store.touch(session_id, clock)
     if session_data is None:
+        raise SessionExpiredError()
+
+    if not await is_user_active(session, session_data.user_id):
+        await store.revoke(session_id)
         raise SessionExpiredError()
 
     return session_data
@@ -117,8 +130,10 @@ async def require_reauth(
 # async functions so tests can call them directly without going through FastAPI's DI).
 
 
-async def _current_session_dep(request: Request, store: SessionStore, clock: ClockDep) -> SessionData:
-    return await get_current_session(request, store, clock)
+async def _current_session_dep(
+    request: Request, store: SessionStore, clock: ClockDep, session: DbSession
+) -> SessionData:
+    return await get_current_session(request, store, clock, session)
 
 
 CurrentSession = Annotated[SessionData, Depends(_current_session_dep)]
