@@ -66,9 +66,8 @@ class Capability(str, Enum):
     EXPORT_IMPORT_FULL_PACKAGE = "EXPORT_IMPORT_FULL_PACKAGE"
     CREATE_LOCAL_FALLBACK_USER = "CREATE_LOCAL_FALLBACK_USER"
     AI_ACT = "AI_ACT"
-    #: BUILD-03: RBAC_MATRIX.md has no row for Application/Tier master data (see
-    #: BUILD-03.plan.md Risk #1) — conservative reading, Admin-only, same class of action as
-    #: the modeled "Global policy/config" row minus its Coordinator scoped-override carve-out.
+    #: BUILD-03: RBAC_MATRIX.md has no row for Application/Tier master data — conservative
+    #: reading, Admin-only, per the gap-filling convention in ADR-035.
     MANAGE_APPLICATION_CATALOG = "MANAGE_APPLICATION_CATALOG"
     MANAGE_TIERS = "MANAGE_TIERS"
 
