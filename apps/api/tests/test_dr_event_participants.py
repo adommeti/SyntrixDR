@@ -91,6 +91,20 @@ async def test_is_participant_false_for_global_admin_with_zero_rows(session: Asy
 
 
 @pytest.mark.asyncio
+async def test_is_participant_true_with_multiple_active_sources(session: AsyncSession) -> None:
+    """A user can hold multiple simultaneous active rows for the same (event, user) through
+    different sources (the unique index is per-source, not per-(event, user)). is_participant's
+    existence check must not raise MultipleResultsFound in that case (found in review)."""
+    user_id = await _create_user(session)
+    event_id = await _create_dr_event(session)
+
+    await enrol_participant(session, event_id, user_id, "EXPLICIT")
+    await enrol_participant(session, event_id, user_id, "ROLE")
+
+    assert await is_participant(session, event_id, user_id) is True
+
+
+@pytest.mark.asyncio
 async def test_user_can_see_event_true_for_global_admin_with_zero_rows(session: AsyncSession) -> None:
     admin_id = await _create_user(session)
     event_id = await _create_dr_event(session)

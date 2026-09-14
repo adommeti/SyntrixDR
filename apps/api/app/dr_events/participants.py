@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import Clock, SystemClock
 from app.dr_events.models import DrEventParticipant
-from app.users_teams_org.queries import has_active_role
+from app.users_teams_org.authorization import AuthorizationService
 
 
 async def enrol_participant(
@@ -85,13 +85,19 @@ async def is_participant(session: AsyncSession, dr_event_id: uuid.UUID, user_id:
     needing the full visibility rule should check `AuthorizationService.can(..., GLOBAL_ADMIN)` OR
     this function, not this function alone."""
     result = await session.execute(
-        select(DrEventParticipant.id).where(
+        select(DrEventParticipant.id)
+        .where(
             and_(
                 DrEventParticipant.dr_event_id == dr_event_id,
                 DrEventParticipant.user_id == user_id,
                 DrEventParticipant.removed_at.is_(None),
             )
         )
+        # A user can hold multiple simultaneous active rows for the same (event, user) via
+        # different sources (e.g. EXPLICIT + ROLE) — the unique index is per-source, not
+        # per-(event, user). scalar_one_or_none() would raise MultipleResultsFound in that case
+        # (found in review); this only checks existence, so cap at one row.
+        .limit(1)
     )
     return result.scalar_one_or_none() is not None
 
@@ -108,7 +114,10 @@ def visible_event_ids_for_user(user_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
 
 
 async def user_can_see_event(session: AsyncSession, user_id: uuid.UUID, dr_event_id: uuid.UUID) -> bool:
-    """Global Admin implicit OR an active explicit participant row (D-222)."""
-    if await has_active_role(session, user_id, "GLOBAL_ADMIN", scope_type="GLOBAL"):
+    """Global Admin implicit OR an active explicit participant row (D-222). Goes through
+    `AuthorizationService.is_global_admin` (not a raw role-table check) so a LOCAL GLOBAL_ADMIN
+    without TOTP enrolled (D-235) doesn't get implicit visibility either — found in review that a
+    second, independent GLOBAL_ADMIN check here would have silently bypassed that same gate."""
+    if await AuthorizationService.is_global_admin(session, user_id):
         return True
     return await is_participant(session, dr_event_id, user_id)
