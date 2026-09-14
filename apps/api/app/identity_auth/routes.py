@@ -19,6 +19,7 @@ from app.identity_auth.dependencies import (
     CurrentSession,
     DbSession,
     RequireCsrfDependency,
+    RequireReauthDependency,
     SessionStore,
 )
 from app.identity_auth.oidc import get_entra_login_redirect, handle_entra_callback
@@ -132,7 +133,7 @@ async def post_password_reset_confirm(
     return PasswordResetConfirmResponse(message="Password reset successful.")
 
 
-@router.post("/local/totp/enrol", dependencies=[RequireCsrfDependency])
+@router.post("/local/totp/enrol", dependencies=[RequireCsrfDependency, RequireReauthDependency])
 async def post_totp_enrol(
     session: DbSession,
     session_data: CurrentSession,

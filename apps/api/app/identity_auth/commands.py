@@ -53,6 +53,17 @@ class TotpInvalidError(AppError):
         super().__init__("TOTP code is invalid.")
 
 
+class TotpAlreadyEnabledError(AppError):
+    code = "TOTP_ALREADY_ENABLED"
+    status_code = 409
+
+    def __init__(self) -> None:
+        super().__init__(
+            "TOTP is already enabled on this account. Disabling or replacing it is not yet"
+            " supported by this endpoint."
+        )
+
+
 class PasswordResetTokenInvalidError(AppError):
     code = "PASSWORD_RESET_TOKEN_INVALID"
     status_code = 400
@@ -160,7 +171,12 @@ async def local_login(
             action="AUTH_ACCOUNT_LOCKED",
             metadata={"reason": "failed_attempts_exceeded"},
         )
-        await session.flush()
+        # Must commit before raising: the request-scoped session has no auto-commit, so an
+        # exception propagating out of the route would roll back locked_until, and every
+        # subsequent request would re-enter this same branch forever (lockout that never
+        # expires, since the reset-on-expiry branch above never has a real locked_until to
+        # compare against). Found in review.
+        await session.commit()
         raise AccountLockedError(locked_until.isoformat())
 
     # Verify password
@@ -265,10 +281,16 @@ async def entra_callback(
     Returns:
         LoginResult with session_id and csrf_token
     """
-    from app.users_teams_org.queries import find_entra_user_id_by_object_id
+    from app.users_teams_org.queries import find_entra_user_id_by_object_id, is_user_active
 
     # Find or create user with identity_type='ENTRA' keyed by entra_object_id
     user_id = await find_entra_user_id_by_object_id(session, entra_object_id)
+
+    if user_id is not None and not await is_user_active(session, user_id):
+        # find_entra_user_id_by_object_id deliberately doesn't filter is_active (find-or-create
+        # semantics) — login itself must still reject a deactivated account here. Found in
+        # review: a deactivated Entra admin could otherwise log in and keep their roles.
+        raise InvalidCredentialsError()
 
     if user_id is None:
         # Minimal user provisioning; create new user (full profile sync is users_teams_org's job)
@@ -439,12 +461,13 @@ async def reauth(
             await session.commit()
             raise TotpInvalidError()
 
-    elif method == "ENTRA":
-        # Trusted assertion: caller already holds a live Entra session
-        # Risk flag: assumes caller validated Entra token (no validation here)
-        pass
-
     else:
+        # 'ENTRA' step-up (D-235: "Entra prompt") requires a real, fresh redirect-based
+        # re-authentication against Entra — this session builds no such flow. Accepting the
+        # claim at face value here would let any caller (including a LOCAL user) submit
+        # method='ENTRA' and receive a privileged reauth grant with zero verification, a real
+        # authorization bypass caught in review. Reject rather than fake-accept; a real
+        # Entra step-up prompt is a follow-up, not this endpoint silently trusting the client.
         raise InvalidCredentialsError()
 
     # Create re-auth grant
@@ -543,10 +566,12 @@ async def confirm_password_reset(
     """
     now = clock.now()
 
-    # Hash token and look up
+    # Hash token and look up. FOR UPDATE: two concurrent confirmations of the same token could
+    # both read used_at=None before either commits and both succeed, defeating single-use (found
+    # in review) — same race class as core/idempotency.py's fresh-key path, fixed the same way.
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     result = await session.execute(
-        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash).with_for_update()
     )
     token_record = result.scalar_one_or_none()
 
@@ -606,6 +631,12 @@ async def enrol_totp(
     cred = result.scalar_one_or_none()
     if cred is None:
         raise InvalidCredentialsError()
+    if cred.totp_enabled:
+        # Re-enrolling while already enabled would silently overwrite and disable the active
+        # factor with no verification of the caller's continued possession of it — a hijacked
+        # session could strip 2FA this way. Found in review; the route also now requires a fresh
+        # reauth grant, but the command rejects this independently of route wiring.
+        raise TotpAlreadyEnabledError()
 
     # Get user email for provisioning URI
     email = await get_user_email(session, user_id)

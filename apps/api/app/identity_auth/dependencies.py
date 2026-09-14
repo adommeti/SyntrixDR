@@ -93,13 +93,19 @@ async def require_reauth(
 
     now = clock.now()
     result = await session.execute(
-        select(ReauthGrant).where(
+        select(ReauthGrant)
+        .where(
             and_(
                 ReauthGrant.session_id == session_data.session_id,
                 ReauthGrant.user_id == session_data.user_id,
                 ReauthGrant.expires_at > now,
             )
         )
+        # Reauthenticating twice within the window creates two valid rows —
+        # scalar_one_or_none() would raise MultipleResultsFound (found in review). Any one
+        # unexpired grant is sufficient; take the most recent.
+        .order_by(ReauthGrant.expires_at.desc())
+        .limit(1)
     )
 
     grant = result.scalar_one_or_none()

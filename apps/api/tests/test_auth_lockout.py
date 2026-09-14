@@ -346,3 +346,55 @@ async def test_concurrent_failed_logins_do_not_lose_attempts(engine: AsyncEngine
                 text("DELETE FROM users WHERE id = :id"),
                 {"id": user_id},
             )
+
+
+@pytest.mark.asyncio
+async def test_lockout_is_committed_not_just_flushed(engine: AsyncEngine) -> None:
+    """The lockout branch must commit `locked_until` before raising — a request-scoped session
+    with no auto-commit (the real FastAPI dependency) would otherwise roll it back on the
+    exception, and every later request would re-enter the lockout branch forever (found in
+    review: `flush()` was used where `commit()` was needed). Uses a fresh connection per attempt
+    to simulate real request boundaries, not the single shared test session."""
+    user_id = uuid.uuid4()
+    email = "commit-check@example.com"
+    password = "CorrectPassword123!"
+    clock = FakeClock()
+    store = _MockSessionStore()
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO users (id, identity_type, display_name, email) "
+                "VALUES (:id, 'LOCAL', 'Test User', :email)"
+            ),
+            {"id": user_id, "email": email},
+        )
+    async with engine.begin() as conn:
+        sess = AsyncSession(bind=conn, expire_on_commit=False)
+        await _create_local_credentials(sess, user_id, email, password)
+        await sess.commit()
+
+    try:
+        # 11 failed attempts, each on its own connection/session (a real request boundary).
+        for _ in range(11):
+            conn = await engine.connect()
+            try:
+                sess = AsyncSession(bind=conn, expire_on_commit=False)
+                with pytest.raises((InvalidCredentialsError, AccountLockedError)):
+                    await local_login(
+                        sess, store, clock, email=email, password="WrongPassword123!", totp_code=None
+                    )
+            finally:
+                await conn.close()
+
+        # A brand-new connection must see locked_until actually persisted.
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text("SELECT locked_until FROM local_credentials WHERE user_id = :uid"), {"uid": user_id}
+            )
+            row = result.one()
+            assert row.locked_until is not None, "locked_until must be committed, not just flushed"
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text("DELETE FROM local_credentials WHERE user_id = :uid"), {"uid": user_id})
+            await conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})

@@ -17,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import Clock, FakeClock
-from app.identity_auth.commands import LoginResult, entra_callback
+from app.identity_auth.commands import InvalidCredentialsError, LoginResult, entra_callback
 from app.identity_auth.session_store import SessionData
 
 pytestmark = [pytest.mark.api, pytest.mark.auth, pytest.mark.integration]
@@ -272,3 +272,33 @@ async def test_entra_callback_writes_audit_event(
     assert audit_row.entity_type == "USER"
     assert audit_row.actor_user_id == result.user_id
     assert audit_row.dr_event_id is None  # Auth events don't have a DR event
+
+
+@pytest.mark.asyncio
+async def test_entra_callback_rejects_deactivated_user(
+    session: AsyncSession, clock: FakeClock, mock_store: MockRedisSessionStore
+) -> None:
+    """find_entra_user_id_by_object_id deliberately ignores is_active (find-or-create semantics)
+    — entra_callback itself must still reject a deactivated account. Found in review: a
+    deactivated Entra admin could otherwise log in and keep their roles."""
+    entra_object_id = str(uuid.uuid4())
+    email = "deactivated@example.com"
+    display_name = "Deactivated User"
+
+    first = await entra_callback(
+        session, mock_store, clock, entra_object_id=entra_object_id, email=email, display_name=display_name
+    )
+    await session.flush()
+
+    await session.execute(text("UPDATE users SET is_active = false WHERE id = :id"), {"id": first.user_id})
+    await session.flush()
+
+    with pytest.raises(InvalidCredentialsError):
+        await entra_callback(
+            session,
+            mock_store,
+            clock,
+            entra_object_id=entra_object_id,
+            email=email,
+            display_name=display_name,
+        )

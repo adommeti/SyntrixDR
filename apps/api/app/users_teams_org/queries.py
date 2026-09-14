@@ -43,6 +43,17 @@ async def get_user_email(session: AsyncSession, user_id: uuid.UUID) -> str | Non
     return result.scalar_one_or_none()
 
 
+async def is_user_active(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    """False if the user doesn't exist, is deactivated, or is soft-deleted. Used by
+    `entra_callback` — unlike `find_local_user_id_by_email`/`find_entra_user_id_by_object_id`,
+    which deliberately don't filter for their own find-or-create/no-enumeration reasons, login
+    itself must still reject a deactivated account regardless of how it was found."""
+    result = await session.execute(
+        select(User.is_active).where(User.id == user_id, User.deleted_at.is_(None))
+    )
+    return bool(result.scalar_one_or_none())
+
+
 async def get_me(session: AsyncSession, user_id: uuid.UUID) -> User | None:
     """Full profile for the current session's user."""
     result = await session.execute(select(User).where(User.id == user_id))

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import AuditEvent
-from app.identity_auth.commands import TotpInvalidError, enrol_totp, verify_totp
+from app.identity_auth.commands import TotpAlreadyEnabledError, TotpInvalidError, enrol_totp, verify_totp
 from app.identity_auth.models import LocalCredential
 from app.identity_auth.security import generate_totp_secret, verify_totp_code
 
@@ -202,6 +202,33 @@ async def test_verify_totp_already_enabled_raises_error(
     # Try to verify again
     with pytest.raises(TotpInvalidError):
         await verify_totp(session, user_id=user_id, code=valid_code)
+
+
+@pytest.mark.asyncio
+async def test_enrol_totp_rejects_re_enrolment_while_already_enabled(
+    session: AsyncSession, local_user_with_password: tuple[uuid.UUID, str]
+) -> None:
+    """A hijacked session must not be able to silently replace/disable an active TOTP factor by
+    calling enrol again — found in review: re-enrolling unconditionally overwrote the secret and
+    set totp_enabled=False with no verification of the caller's possession of the current one."""
+    user_id, _ = local_user_with_password
+    enrol_result = await enrol_totp(session, user_id=user_id)
+    totp = pyotp.TOTP(enrol_result.secret)
+    await verify_totp(session, user_id=user_id, code=totp.now())
+
+    original = (
+        await session.execute(select(LocalCredential).where(LocalCredential.user_id == user_id))
+    ).scalar_one()
+    assert original.totp_enabled is True
+
+    with pytest.raises(TotpAlreadyEnabledError):
+        await enrol_totp(session, user_id=user_id)
+
+    unchanged = (
+        await session.execute(select(LocalCredential).where(LocalCredential.user_id == user_id))
+    ).scalar_one()
+    assert unchanged.totp_enabled is True
+    assert unchanged.totp_secret_encrypted == original.totp_secret_encrypted
 
 
 @pytest.mark.asyncio

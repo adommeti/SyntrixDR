@@ -171,6 +171,45 @@ async def test_require_reauth_passes_within_window(
 
 
 @pytest.mark.asyncio
+async def test_require_reauth_passes_with_two_overlapping_valid_grants(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Reauthenticating twice within the 5-minute window creates two rows that are BOTH still
+    valid at the same instant. `require_reauth`'s query must not raise `MultipleResultsFound` in
+    that case (found in review: `scalar_one_or_none()` on a query that can match >1 row)."""
+    _, plaintext_password = local_user_with_credentials
+
+    for _ in range(2):
+        await reauth(
+            session,
+            store=None,  # type: ignore
+            clock=clock,
+            session_data=session_data,
+            method="PASSWORD",
+            password=plaintext_password,
+        )
+
+    grants = (
+        (
+            await session.execute(
+                select(ReauthGrant).where(
+                    (ReauthGrant.session_id == uuid.UUID(session_data.session_id))
+                    & (ReauthGrant.user_id == session_data.user_id)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(grants) == 2, "test setup should produce two overlapping valid grants"
+
+    await require_reauth(session, session_data, clock)  # must not raise MultipleResultsFound
+
+
+@pytest.mark.asyncio
 async def test_require_reauth_fails_after_expiry(
     session: AsyncSession,
     local_user_with_credentials: tuple[uuid.UUID, str],
@@ -306,6 +345,42 @@ async def test_reauth_with_wrong_password_raises_invalid_credentials(
     )
 
     assert len(grants) == 0, "No grant should be created on failed reauth"
+
+
+@pytest.mark.asyncio
+async def test_reauth_with_entra_method_is_rejected(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """No real Entra step-up flow exists this session; accepting method='ENTRA' at face value
+    would let ANY caller — including a LOCAL user — claim a privileged reauth grant with zero
+    verification. Must be rejected, not silently trusted."""
+    user_id, _ = local_user_with_credentials
+
+    with pytest.raises(InvalidCredentialsError):
+        await reauth(
+            session,
+            store=None,  # type: ignore
+            clock=clock,
+            session_data=session_data,
+            method="ENTRA",
+        )
+
+    grants = (
+        (
+            await session.execute(
+                select(ReauthGrant).where(
+                    (ReauthGrant.session_id == uuid.UUID(session_data.session_id))
+                    & (ReauthGrant.user_id == user_id)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(grants) == 0, "No grant should be created for an unverified ENTRA claim"
 
 
 @pytest.mark.asyncio
