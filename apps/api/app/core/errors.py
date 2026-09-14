@@ -30,6 +30,18 @@ class IdempotencyKeyRequiredError(AppError):
         super().__init__("An Idempotency-Key header is required on this command.")
 
 
+class ConcurrencyConflictError(AppError):
+    """D-214: a stale `expected_version` write is rejected with 409, except the
+    Manager-precedence case (own-Team Task assignment), which is handled by the owning
+    transition service, not this generic error."""
+
+    code = "CONCURRENCY_CONFLICT"
+    status_code = 409
+
+    def __init__(self) -> None:
+        super().__init__("This record was modified by someone else. Reload and try again.")
+
+
 def error_envelope(error: AppError, correlation_id: str) -> dict[str, Any]:
     return {
         "error": {
