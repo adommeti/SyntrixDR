@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import uuid
 from unittest.mock import patch
@@ -7,7 +8,7 @@ from unittest.mock import patch
 import pytest
 import pytest_asyncio
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.clock import FakeClock
 from app.identity_auth.commands import (
@@ -348,3 +349,97 @@ async def test_confirm_password_reset_with_breached_password_fails(
         await confirm_password_reset(session, clock, token=plaintext_token, new_password=breached_password)
 
     assert exc_info.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_concurrent_confirm_password_reset_only_one_succeeds(engine: AsyncEngine) -> None:
+    """Two concurrent confirmations of the same token must not both succeed — found in review: a
+    plain SELECT-then-check-then-write let both readers see `used_at=None` before either
+    committed. Uses two real, independently-connected sessions (not the shared per-test
+    transaction), matching core/idempotency.py's proven concurrency-test pattern."""
+    user_id = uuid.uuid4()
+    email = f"race-{user_id}@example.test"
+    plaintext_token = "concurrent-reset-token"
+    token_hash = hashlib.sha256(plaintext_token.encode()).hexdigest()
+    clock = FakeClock()
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO users (id, identity_type, display_name, email) "
+                "VALUES (:id, 'LOCAL', 'Test User', :email)"
+            ),
+            {"id": user_id, "email": email},
+        )
+        hasher = PasswordHasher()
+        await conn.execute(
+            text(
+                "INSERT INTO local_credentials (id, user_id, password_hash) " "VALUES (:id, :user_id, :hash)"
+            ),
+            {"id": uuid.uuid4(), "user_id": user_id, "hash": hasher.hash_password("OldPassword123!")},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) "
+                "VALUES (:id, :user_id, :token_hash, :expires_at)"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "user_id": user_id,
+                "token_hash": token_hash,
+                "expires_at": clock.now().replace(year=clock.now().year + 1),
+            },
+        )
+
+    results: list[str] = []
+
+    async def _racer(new_password: str, *, ready: asyncio.Event | None = None, hold: float = 0.0) -> None:
+        conn = await engine.connect()
+        try:
+            sess = AsyncSession(bind=conn, expire_on_commit=False)
+            original_execute = sess.execute
+
+            async def _traced_execute(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+                result = await original_execute(*args, **kwargs)
+                if ready is not None:
+                    ready.set()
+                    if hold:
+                        await asyncio.sleep(hold)
+                return result
+
+            sess.execute = _traced_execute  # type: ignore[method-assign]
+            try:
+                await confirm_password_reset(sess, clock, token=plaintext_token, new_password=new_password)
+                results.append("success")
+            except PasswordResetTokenInvalidError:
+                results.append("rejected")
+        finally:
+            await conn.close()
+
+    try:
+        ready = asyncio.Event()
+        first = asyncio.create_task(_racer("FirstNewPassword123!", ready=ready, hold=0.1))
+        await ready.wait()
+        second = asyncio.create_task(_racer("SecondNewPassword123!"))
+        await asyncio.gather(first, second)
+
+        assert sorted(results) == [
+            "rejected",
+            "success",
+        ], f"exactly one racer must succeed, the other must be rejected — got {results}"
+
+        async with engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text("SELECT used_at FROM password_reset_tokens WHERE token_hash = :h"),
+                    {"h": token_hash},
+                )
+            ).one()
+            assert row.used_at is not None
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("DELETE FROM password_reset_tokens WHERE user_id = :uid"), {"uid": user_id}
+            )
+            await conn.execute(text("DELETE FROM local_credentials WHERE user_id = :uid"), {"uid": user_id})
+            await conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
