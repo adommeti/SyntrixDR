@@ -224,6 +224,51 @@ async def test_ten_failed_attempts_within_window_triggers_lockout_on_eleventh(
 
 
 @pytest.mark.asyncio
+async def test_failures_spaced_just_under_the_window_do_not_accumulate_forever(
+    session: AsyncSession, clock: FakeClock
+) -> None:
+    """D-235 counts failures within a single 15-minute window, not indefinitely as long as each
+    consecutive gap is individually under 15 minutes — found in review: `updated_at` was reset on
+    EVERY failure, sliding the window forward each time, so it only reset the count after a
+    15-minute *gap* since the last failure rather than tracking a fixed window start. Failures
+    paced at 14-minute intervals therefore kept incrementing without bound and eventually
+    triggered a lockout after ~2 hours, even though no real 15-minute window ever contained 10
+    failures. With a fixed window start, only 2 such failures ever land in the same window (the
+    3rd arrives 28 minutes after the window opened), so the count never reaches the threshold."""
+    user_id = uuid.uuid4()
+    email = "spaced-failures@example.com"
+    password = "CorrectPassword123!"
+
+    await session.execute(
+        text(
+            "INSERT INTO users (id, identity_type, display_name, email) "
+            "VALUES (:id, 'LOCAL', 'Test User', :email)"
+        ),
+        {"id": user_id, "email": email},
+    )
+    await _create_local_credentials(session, user_id, email, password)
+    await session.commit()
+
+    store = _MockSessionStore()
+
+    for _ in range(20):
+        with pytest.raises(InvalidCredentialsError):
+            await local_login(
+                session, store, clock, email=email, password="WrongPassword123!", totp_code=None
+            )
+        await session.commit()
+        clock.advance(minutes=14)
+
+    result = await session.execute(
+        text("SELECT failed_attempts, locked_until FROM local_credentials WHERE user_id = :uid"),
+        {"uid": user_id},
+    )
+    row = result.one()
+    assert row.locked_until is None
+    assert row.failed_attempts <= 2
+
+
+@pytest.mark.asyncio
 async def test_lockout_clears_when_clock_advances_past_locked_until(
     session: AsyncSession, clock: FakeClock
 ) -> None:

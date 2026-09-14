@@ -14,10 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import AuditEvent
 from app.core.clock import FakeClock
 from app.core.errors import AppError, app_error_handler
-from app.identity_auth.commands import InvalidCredentialsError, reauth
+from app.identity_auth.commands import AccountLockedError, InvalidCredentialsError, TotpInvalidError, reauth
 from app.identity_auth.dependencies import ReauthRequiredError, require_reauth
 from app.identity_auth.models import LocalCredential, ReauthGrant, SessionRecord
-from app.identity_auth.security import PasswordHasher
+from app.identity_auth.security import PasswordHasher, generate_totp_secret
 from app.identity_auth.session_store import SessionData
 
 pytestmark = [pytest.mark.api, pytest.mark.auth, pytest.mark.integration]
@@ -345,6 +345,97 @@ async def test_reauth_with_wrong_password_raises_invalid_credentials(
     )
 
     assert len(grants) == 0, "No grant should be created on failed reauth"
+
+
+@pytest.mark.asyncio
+async def test_repeated_wrong_password_reauth_locks_the_account(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """A caller holding a stolen session must not get unlimited password guesses against
+    `/auth/reauth` — found in review that failures here only produced audit records, with no
+    attempt counter, lockout check, or rate limiter at all, unlike `local_login`. Shares the
+    same D-235 10-failures/15-min lockout counter on the user's `local_credentials` row."""
+    lockout_threshold = 10
+
+    for _ in range(lockout_threshold - 1):
+        with pytest.raises(InvalidCredentialsError):
+            await reauth(
+                session,
+                store=None,  # type: ignore
+                clock=clock,
+                session_data=session_data,
+                method="PASSWORD",
+                password="WrongPassword123!",
+            )
+
+    with pytest.raises(AccountLockedError):
+        await reauth(
+            session,
+            store=None,  # type: ignore
+            clock=clock,
+            session_data=session_data,
+            method="PASSWORD",
+            password="WrongPassword123!",
+        )
+
+    # Even the correct password is now rejected — the account is locked, not just the guess.
+    _, plaintext_password = local_user_with_credentials
+    with pytest.raises(AccountLockedError):
+        await reauth(
+            session,
+            store=None,  # type: ignore
+            clock=clock,
+            session_data=session_data,
+            method="PASSWORD",
+            password=plaintext_password,
+        )
+
+
+@pytest.mark.asyncio
+async def test_repeated_wrong_totp_reauth_locks_the_account(
+    session: AsyncSession,
+    local_user_with_credentials: tuple[uuid.UUID, str],
+    session_data: SessionData,
+    clock: FakeClock,
+) -> None:
+    """Same bound applies to the TOTP method — a stolen session must not allow unlimited
+    six-digit guesses against `/auth/reauth` either (found in review)."""
+    user_id, _ = local_user_with_credentials
+    secret = generate_totp_secret()
+    await session.execute(
+        text(
+            "UPDATE local_credentials SET totp_enabled = true, totp_secret_encrypted = :secret "
+            "WHERE user_id = :uid"
+        ),
+        {"secret": secret, "uid": user_id},
+    )
+    await session.flush()
+
+    lockout_threshold = 10
+
+    for _ in range(lockout_threshold - 1):
+        with pytest.raises(TotpInvalidError):
+            await reauth(
+                session,
+                store=None,  # type: ignore
+                clock=clock,
+                session_data=session_data,
+                method="TOTP",
+                totp_code="000000",
+            )
+
+    with pytest.raises(AccountLockedError):
+        await reauth(
+            session,
+            store=None,  # type: ignore
+            clock=clock,
+            session_data=session_data,
+            method="TOTP",
+            totp_code="000000",
+        )
 
 
 @pytest.mark.asyncio

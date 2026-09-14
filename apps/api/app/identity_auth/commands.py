@@ -97,30 +97,67 @@ class TotpEnrolResult:
     provisioning_uri: str
 
 
+async def _load_credential_checking_lockout(
+    session: AsyncSession, user_id: uuid.UUID, now: datetime
+) -> LocalCredential:
+    """Loads the LocalCredential row for an auth flow, raising AccountLockedError if the account
+    is currently locked and resetting an expired lockout's counters otherwise. Shared by
+    `local_login` and `reauth` (D-235): both guard access with the same password/TOTP factors on
+    the same credential row and must share one lockout counter — reauth previously had no
+    attempt counter, lockout check, or rate limiter at all, letting a caller holding a stolen
+    session guess the six-digit TOTP (or the password) against `/auth/reauth` without limit
+    (found in review). FOR UPDATE: concurrent failures on the same row must not lose an update
+    (issue class fixed once already in core/idempotency.py)."""
+    result = await session.execute(
+        select(LocalCredential).where(LocalCredential.user_id == user_id).with_for_update()
+    )
+    cred = result.scalar_one_or_none()
+    if cred is None:
+        raise InvalidCredentialsError()
+
+    if cred.locked_until and cred.locked_until > now:
+        raise AccountLockedError(cred.locked_until.isoformat())
+
+    if cred.locked_until and cred.locked_until <= now:
+        cred.failed_attempts = 0
+        cred.locked_until = None
+        await session.flush()
+
+    return cred
+
+
 async def _register_failed_attempt(
     session: AsyncSession,
     cred: LocalCredential,
-    user_id: uuid.UUID,
     now: datetime,
     settings: Settings,
     *,
     failure_action: str,
+    entity_type: str,
+    entity_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None = None,
+    extra_metadata: dict[str, object] | None = None,
 ) -> None:
-    """D-235: 10 failures/15 min triggers a 30-minute lockout. Shared by both the wrong-password
-    and invalid-TOTP branches of `local_login` — TOTP guesses were previously exempt entirely,
-    letting an attacker who already has the password brute-force the six-digit code with
-    unlimited attempts (found in review). `updated_at` doubles as "last failure time" (bumped on
-    every increment) since the frozen schema has no dedicated window-start column; a failure
-    outside the window starts a fresh count instead of accumulating forever. Locks (and commits)
-    on the SAME failure that crosses the threshold, so expiry is measured from the triggering
-    failure — a prior version only locked on a later request that merely re-observed an
-    already-stale count, restarting the cooldown from the wrong moment (found in review)."""
+    """D-235: 10 failures within a 15-minute window trigger a 30-minute lockout. Shared by the
+    wrong-password and invalid-TOTP branches of both `local_login` and `reauth` — TOTP guesses
+    were previously exempt entirely, letting an attacker who already has the password brute-force
+    the six-digit code with unlimited attempts (found in review). `updated_at` doubles as the
+    window's start timestamp (the frozen schema has no dedicated column for it) and is set ONLY
+    when a new window opens — the first failure ever, or the first failure after the prior window
+    expired — never on every failure. A prior version re-set it on every failure, which slid the
+    window forward each time and only reset the count after a 15-minute *gap* in guesses, so
+    failures paced just under the window (e.g. every 14 minutes) accumulated indefinitely instead
+    of being bounded to any real 15-minute period (found in review). Locks (and commits) on the
+    SAME failure that crosses the threshold, so expiry is measured from the triggering failure —
+    a prior version only locked on a later request that merely re-observed an already-stale
+    count, restarting the cooldown from the wrong moment (found in review)."""
     window = timedelta(minutes=settings.lockout_window_minutes)
-    if cred.failed_attempts > 0 and (now - cred.updated_at) > window:
+    window_expired = cred.failed_attempts > 0 and (now - cred.updated_at) > window
+    if cred.failed_attempts == 0 or window_expired:
         cred.failed_attempts = 1
+        cred.updated_at = now
     else:
         cred.failed_attempts += 1
-    cred.updated_at = now
 
     locked_until: datetime | None = None
     if cred.failed_attempts >= settings.lockout_threshold:
@@ -130,18 +167,21 @@ async def _register_failed_attempt(
     await session.flush()
     await write_audit(
         session,
-        actor_user_id=None,
-        entity_type="USER",
-        entity_id=user_id,
+        actor_user_id=actor_user_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
         action=failure_action,
-        metadata={"failed_attempts": cred.failed_attempts},
+        metadata={"failed_attempts": cred.failed_attempts, **(extra_metadata or {})},
     )
     if locked_until is not None:
+        # Always a USER-entity audit regardless of the caller's own entity (local_login has no
+        # SESSION yet to attach to; reauth's primary failure event above is already SESSION-
+        # scoped) — the lockout itself is a property of the user's credential, not the request.
         await write_audit(
             session,
-            actor_user_id=None,
+            actor_user_id=actor_user_id,
             entity_type="USER",
-            entity_id=user_id,
+            entity_id=cred.user_id,
             action="AUTH_ACCOUNT_LOCKED",
             metadata={"reason": "failed_attempts_exceeded"},
         )
@@ -191,35 +231,21 @@ async def local_login(
         # No enumeration: same error as wrong password
         raise InvalidCredentialsError()
 
-    # Load local credentials. FOR UPDATE: two concurrent failed logins racing on the same
-    # row must not lose an update (issue class fixed once already in core/idempotency.py —
-    # a plain SELECT then ORM read-modify-write UPDATE with no lock lets the loser overwrite
-    # the winner's committed increment with its own stale computed value).
-    result = await session.execute(
-        select(LocalCredential).where(LocalCredential.user_id == user_id).with_for_update()
-    )
-    cred = result.scalar_one_or_none()
-    if cred is None:
-        raise InvalidCredentialsError()
-
     settings = get_settings()
     now = clock.now()
-
-    # Check if locked (by previous lockout or by checking threshold)
-    if cred.locked_until and cred.locked_until > now:
-        raise AccountLockedError(cred.locked_until.isoformat())
-
-    # If lockout has expired, reset failed_attempts
-    if cred.locked_until and cred.locked_until <= now:
-        cred.failed_attempts = 0
-        cred.locked_until = None
-        await session.flush()
+    cred = await _load_credential_checking_lockout(session, user_id, now)
 
     # Verify password
     hasher = PasswordHasher()
     if not hasher.verify_password(password, cred.password_hash):
         await _register_failed_attempt(
-            session, cred, user_id, now, settings, failure_action="AUTH_LOGIN_LOCAL_FAILURE"
+            session,
+            cred,
+            now,
+            settings,
+            failure_action="AUTH_LOGIN_LOCAL_FAILURE",
+            entity_type="USER",
+            entity_id=user_id,
         )
         raise InvalidCredentialsError()
 
@@ -235,7 +261,13 @@ async def local_login(
             # the failure and never counted it toward the same lockout threshold as a wrong
             # password.
             await _register_failed_attempt(
-                session, cred, user_id, now, settings, failure_action="AUTH_TOTP_FAILED"
+                session,
+                cred,
+                now,
+                settings,
+                failure_action="AUTH_TOTP_FAILED",
+                entity_type="USER",
+                entity_id=user_id,
             )
             raise TotpInvalidError()
 
@@ -435,48 +467,50 @@ async def reauth(
     now = clock.now()
     session_id_uuid = uuid.UUID(session_data.session_id)
 
-    # Verify method and credentials
+    # Verify method and credentials. D-235: a stolen session must not let its holder guess the
+    # password or six-digit TOTP against this endpoint without limit — reauth previously had no
+    # attempt counter, lockout check, or rate limiter at all (found in review). Both methods
+    # share the SAME lockout counter as `local_login` on this user's `local_credentials` row, via
+    # `_load_credential_checking_lockout`/`_register_failed_attempt`.
     if method == "PASSWORD":
         if password is None:
             raise InvalidCredentialsError()
 
-        result = await session.execute(
-            select(LocalCredential).where(LocalCredential.user_id == session_data.user_id)
-        )
-        cred = result.scalar_one_or_none()
-        if cred is None or not PasswordHasher().verify_password(password, cred.password_hash):
-            await write_audit(
+        cred = await _load_credential_checking_lockout(session, session_data.user_id, now)
+        if not PasswordHasher().verify_password(password, cred.password_hash):
+            await _register_failed_attempt(
                 session,
-                actor_user_id=session_data.user_id,
+                cred,
+                now,
+                settings,
+                failure_action="AUTH_REAUTH_FAILED",
                 entity_type="SESSION",
                 entity_id=session_id_uuid,
-                action="AUTH_REAUTH_FAILED",
-                metadata={"method": method},
+                actor_user_id=session_data.user_id,
+                extra_metadata={"method": method},
             )
-            await session.commit()
             raise InvalidCredentialsError()
 
     elif method == "TOTP":
         if totp_code is None:
             raise TotpInvalidError()
 
-        result = await session.execute(
-            select(LocalCredential).where(LocalCredential.user_id == session_data.user_id)
-        )
-        cred = result.scalar_one_or_none()
-        if cred is None or not cred.totp_enabled:
+        cred = await _load_credential_checking_lockout(session, session_data.user_id, now)
+        if not cred.totp_enabled:
             raise TotpInvalidError()
 
         if not verify_totp_code(cred.totp_secret_encrypted or "", totp_code):
-            await write_audit(
+            await _register_failed_attempt(
                 session,
-                actor_user_id=session_data.user_id,
+                cred,
+                now,
+                settings,
+                failure_action="AUTH_REAUTH_FAILED",
                 entity_type="SESSION",
                 entity_id=session_id_uuid,
-                action="AUTH_REAUTH_FAILED",
-                metadata={"method": method},
+                actor_user_id=session_data.user_id,
+                extra_metadata={"method": method},
             )
-            await session.commit()
             raise TotpInvalidError()
 
     else:
