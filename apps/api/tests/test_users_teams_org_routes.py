@@ -170,7 +170,17 @@ async def _create_local_admin(session: AsyncSession, password: str) -> uuid.UUID
         {"id": user_id, "email": f"{user_id}@example.test"},
     )
     hasher = PasswordHasher()
-    session.add(LocalCredential(user_id=user_id, password_hash=hasher.hash_password(password)))
+    # totp_enabled=True: D-235 requires TOTP for a LOCAL GLOBAL_ADMIN, and AuthorizationService
+    # withholds the admin bypass from an account that has a real credential row but hasn't
+    # enrolled it — this fixture models a fully-enrolled admin, not the pre-enrolment state.
+    session.add(
+        LocalCredential(
+            user_id=user_id,
+            password_hash=hasher.hash_password(password),
+            totp_enabled=True,
+            totp_secret_encrypted="fake-secret-for-tests",
+        )
+    )
     session.add(RoleAssignment(user_id=user_id, role_key="GLOBAL_ADMIN", scope_type="GLOBAL"))
     await session.flush()
     return user_id

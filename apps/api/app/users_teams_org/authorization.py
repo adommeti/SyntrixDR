@@ -4,11 +4,37 @@ import uuid
 from dataclasses import dataclass
 from enum import Enum
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
-from app.users_teams_org.models import Team
+from app.identity_auth.models import LocalCredential
+from app.users_teams_org.models import Team, User
 from app.users_teams_org.queries import list_active_roles
+
+
+async def _global_admin_role_is_effective(session: AsyncSession, actor_id: uuid.UUID) -> bool:
+    """D-235: TOTP is mandatory for a LOCAL GLOBAL_ADMIN. A LOCAL admin who hasn't enrolled TOTP
+    yet does not get GLOBAL_ADMIN's implicit any-capability bypass — found in review (an admin
+    role with `totp_enabled=False`, the default, otherwise granted full privileges on password
+    alone). They keep whatever other roles they hold and can still log in and enrol TOTP
+    normally; only the privileged bypass is withheld until enrolment completes. ENTRA identities
+    are out of scope here — their MFA is enforced by Entra Conditional Access, not this app."""
+    user = await session.get(User, actor_id)
+    if user is None or user.identity_type != "LOCAL":
+        return True
+    result = await session.execute(
+        select(LocalCredential.totp_enabled).where(LocalCredential.user_id == actor_id)
+    )
+    totp_enabled = result.scalar_one_or_none()
+    if totp_enabled is None:
+        # No local_credentials row at all means this LOCAL identity has no password set and
+        # cannot log in locally in the first place — the D-235 login-time concern this gate
+        # targets doesn't apply yet. Gating on "no row" too would also silently deactivate
+        # GLOBAL_ADMIN for any fixture/role-only user that never modeled a credential, which is
+        # a different, much broader behavior than "this real account skipped TOTP enrolment".
+        return True
+    return totp_enabled
 
 
 class Capability(str, Enum):
@@ -209,6 +235,17 @@ class AuthorizationService:
     """`require(actor, capability, scope)` implementing RBAC_MATRIX.md as data (see `GRANTS`)."""
 
     @staticmethod
+    async def is_global_admin(session: AsyncSession, actor_id: uuid.UUID) -> bool:
+        """True iff `actor_id` holds an effective GLOBAL_ADMIN role — the single source of truth
+        for the "implicit everywhere" Global Admin rule (D-222's participant visibility,
+        `can()`'s bypass, etc.), so the TOTP-effectiveness gate (D-235) can't be bypassed by
+        calling `has_active_role` directly instead of going through this service."""
+        roles = await list_active_roles(session, actor_id)
+        return any(r.role_key == "GLOBAL_ADMIN" for r in roles) and await _global_admin_role_is_effective(
+            session, actor_id
+        )
+
+    @staticmethod
     async def can(
         session: AsyncSession, actor_id: uuid.UUID, capability: Capability, scope: Scope | None = None
     ) -> bool:
@@ -216,7 +253,14 @@ class AuthorizationService:
         roles = await list_active_roles(session, actor_id)
 
         if any(r.role_key == "GLOBAL_ADMIN" for r in roles):
-            return True
+            if await _global_admin_role_is_effective(session, actor_id):
+                return True
+            # Not effective (D-235): treat as if the GLOBAL_ADMIN role isn't held at all — must
+            # be filtered out of `roles` here too, not just skipped in this early-return, or the
+            # per-capability grant_row loop below (which also lists "GLOBAL_ADMIN": True on every
+            # row, mirroring RBAC_MATRIX's ✓ column) would grant it anyway. Found in review's own
+            # follow-up: the first fix only blocked this early return, not the loop.
+            roles = [r for r in roles if r.role_key != "GLOBAL_ADMIN"]
         if capability in READ_ONLY_CAPABILITIES and any(r.role_key == "GLOBAL_READONLY" for r in roles):
             return True
 

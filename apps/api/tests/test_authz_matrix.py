@@ -9,6 +9,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.identity_auth.models import LocalCredential
+from app.identity_auth.security import PasswordHasher
 from app.users_teams_org.authorization import (
     GRANTS,
     AuthorizationRequiredError,
@@ -155,3 +157,66 @@ async def test_own_team_denies_manager_of_a_different_team(session: AsyncSession
         )
         is False
     )
+
+
+async def _create_local_admin(session: AsyncSession, *, totp_enabled: bool) -> uuid.UUID:
+    user_id = await _create_user(session)
+    hasher = PasswordHasher()
+    session.add(
+        LocalCredential(
+            user_id=user_id,
+            password_hash=hasher.hash_password("AdminPassword123!"),
+            totp_enabled=totp_enabled,
+            totp_secret_encrypted="fake-secret" if totp_enabled else None,
+        )
+    )
+    await _grant_role(session, user_id, "GLOBAL_ADMIN")
+    await session.flush()
+    return user_id
+
+
+async def _create_entra_admin(session: AsyncSession) -> uuid.UUID:
+    user_id = uuid.uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO users (id, identity_type, display_name, email, entra_object_id) "
+            "VALUES (:id, 'ENTRA', 'Test Admin', :email, :oid)"
+        ),
+        {"id": user_id, "email": f"{user_id}@example.test", "oid": str(uuid.uuid4())},
+    )
+    await _grant_role(session, user_id, "GLOBAL_ADMIN")
+    await session.flush()
+    return user_id
+
+
+@pytest.mark.asyncio
+async def test_local_global_admin_without_totp_loses_the_bypass(session: AsyncSession) -> None:
+    """D-235: TOTP is mandatory for a LOCAL GLOBAL_ADMIN — without it enrolled, the role's
+    implicit any-capability bypass must not apply (found in review: a LOCAL admin with the
+    default `totp_enabled=False` otherwise got full privileges on password alone)."""
+    admin_id = await _create_local_admin(session, totp_enabled=False)
+
+    assert await AuthorizationService.is_global_admin(session, admin_id) is False
+    assert (
+        await AuthorizationService.can(session, admin_id, Capability.CREATE_LOCAL_FALLBACK_USER, Scope())
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_global_admin_with_totp_keeps_the_bypass(session: AsyncSession) -> None:
+    admin_id = await _create_local_admin(session, totp_enabled=True)
+
+    assert await AuthorizationService.is_global_admin(session, admin_id) is True
+    assert (
+        await AuthorizationService.can(session, admin_id, Capability.CREATE_LOCAL_FALLBACK_USER, Scope())
+        is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_entra_global_admin_keeps_the_bypass_without_totp(session: AsyncSession) -> None:
+    """The TOTP-effectiveness gate is LOCAL-only — Entra MFA is Entra's own responsibility."""
+    admin_id = await _create_entra_admin(session)
+
+    assert await AuthorizationService.is_global_admin(session, admin_id) is True
