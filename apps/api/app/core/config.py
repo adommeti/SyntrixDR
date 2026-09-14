@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     smtp_port: int = 1025
     smtp_from_address: str = "drcc-noreply@localhost"
 
+    frontend_public_url: str = "http://localhost:3000"
+
     session_secret: str = ""
     csrf_secret: str = ""
 

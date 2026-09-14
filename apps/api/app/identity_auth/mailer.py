@@ -35,7 +35,7 @@ async def send_password_reset_email(to: str, token: str) -> None:
     settings = get_settings()
 
     subject = "Reset Your SyntrixDR Password"
-    reset_url = f"http://localhost:3000/auth/reset-password?token={token}"
+    reset_url = f"{settings.frontend_public_url}/auth/reset-password?token={token}"
     body = f"""
 Hello,
 
