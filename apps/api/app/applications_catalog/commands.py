@@ -15,6 +15,18 @@ from app.users_teams_org.authorization import AuthorizationService, Capability
 from app.users_teams_org.queries import is_user_active
 
 
+class _Unset:
+    """Sentinel distinguishing 'field omitted from the PATCH payload' from an explicit
+    `null`, so `description`/`external_system`/`external_id` can be cleared (found in
+    review: treating explicit null the same as omitted made nullable fields un-clearable)."""
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+
+UNSET = _Unset()
+
+
 class ApplicationNameConflictError(AppError):
     code = "APPLICATION_NAME_CONFLICT"
     status_code = 409
@@ -145,11 +157,11 @@ async def update_application(
     actor_id: uuid.UUID,
     application_id: uuid.UUID,
     expected_version: int,
-    name: str | None = None,
-    description: str | None = None,
-    tier_id: uuid.UUID | None = None,
-    external_system: str | None = None,
-    external_id: str | None = None,
+    name: str | _Unset | None = UNSET,
+    description: str | None | _Unset = UNSET,
+    tier_id: uuid.UUID | _Unset | None = UNSET,
+    external_system: str | None | _Unset = UNSET,
+    external_id: str | None | _Unset = UNSET,
     clock: Clock | None = None,
 ) -> Application:
     """D-214: a stale `expected_version` write is rejected with 409 CONCURRENCY_CONFLICT
@@ -157,7 +169,12 @@ async def update_application(
     clock = clock or SystemClock()
     await AuthorizationService.require(session, actor_id, Capability.MANAGE_APPLICATION_CATALOG)
 
-    application = await session.get(Application, application_id)
+    # `with_for_update=True` closes a race two sequential reads alone can't: without the row
+    # lock, two concurrent PATCH requests can both read version=N, both pass this check, and
+    # both commit as version=N+1, silently discarding one of them (found in review). The lock
+    # forces the second transaction to block until the first commits, so it re-reads the
+    # already-incremented version and correctly hits the mismatch below.
+    application = await session.get(Application, application_id, with_for_update=True)
     if application is None:
         raise ApplicationNotFoundError()
     if application.version != expected_version:
@@ -172,19 +189,19 @@ async def update_application(
         "version": application.version,
     }
 
-    if name is not None and name != application.name:
+    if isinstance(name, str) and name != application.name:
         if await _find_by_name(session, name, exclude_id=application_id) is not None:
             raise ApplicationNameConflictError()
         application.name = name
-    if description is not None:
+    if not isinstance(description, _Unset):
         application.description = description
-    if tier_id is not None:
+    if isinstance(tier_id, uuid.UUID):
         if await session.get(Tier, tier_id) is None:
             raise TierNotFoundError()
         application.tier_id = tier_id
-    if external_system is not None:
+    if not isinstance(external_system, _Unset):
         application.external_system = external_system
-    if external_id is not None:
+    if not isinstance(external_id, _Unset):
         application.external_id = external_id
 
     application.version += 1
@@ -251,6 +268,15 @@ async def set_application_owners(
     )
     existing_by_key = {(row.owner_type, row.owner_order): row for row in existing_result.scalars().all()}
 
+    # Snapshot the active slot->user mapping before mutation: rows are UPDATEd in place (see
+    # the docstring above), so this is the only place the prior assignment is ever visible --
+    # without it, replacing one user with another in the same slot produced an identical
+    # before/after audit payload and the removed assignment was unreconstructable (found in
+    # review).
+    before_owners = {
+        f"{k[0]}:{k[1]}": str(row.user_id) for k, row in existing_by_key.items() if row.deleted_at is None
+    }
+
     for key, row in existing_by_key.items():
         if key not in desired and row.deleted_at is None:
             row.deleted_at = now
@@ -276,13 +302,15 @@ async def set_application_owners(
 
     await session.flush()
 
+    after_owners = {f"{slot.owner_type}:{slot.owner_order}": str(slot.user_id) for slot in owners}
     await write_audit(
         session,
         actor_user_id=actor_id,
         entity_type="APPLICATION",
         entity_id=application_id,
         action="APPLICATION_OWNERS_SET",
-        after={"owners": [{"owner_type": s.owner_type, "owner_order": s.owner_order} for s in owners]},
+        before={"owners": before_owners},
+        after={"owners": after_owners},
     )
     return result_rows
 
@@ -302,7 +330,7 @@ async def update_tiers(
     now = clock.now()
     result_rows: list[Tier] = []
     for update in updates:
-        tier_result = await session.execute(select(Tier).where(Tier.code == update.code))
+        tier_result = await session.execute(select(Tier).where(Tier.code == update.code).with_for_update())
         tier = tier_result.scalar_one_or_none()
         if tier is None:
             raise UnknownTierCodeError(update.code)

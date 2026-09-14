@@ -180,7 +180,7 @@ async def test_create_application_defaults_and_unique_name(
 
     async with await _client(app) as client:
         first = await _create_application(client, session_id, csrf_token, tier_id, name="Billing Service")
-        assert first.status_code in (200, 201)
+        assert first.status_code == 201
         body = first.json()
         assert body["version"] == 1
         assert body.get("deleted_at") is None
@@ -193,6 +193,42 @@ async def test_create_application_defaults_and_unique_name(
     count = await session.execute(
         text("SELECT COUNT(*) AS cnt FROM applications WHERE lower(name) = 'billing service'")
     )
+    assert count.one().cnt == 1
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_create_application_replay_returns_the_same_status_as_the_original(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """D-215: a replay must return the ORIGINAL outcome verbatim, including status code. The
+    route previously had no explicit `status_code=201`, so FastAPI's default 200 on the first
+    response diverged from the 201 the idempotency layer had stored and later replayed with
+    (found in review)."""
+    admin_id = await _create_entra_admin(session)
+    tier_id = await _tier_id(session, "TIER_1")
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+    idem_headers = _idem_headers(csrf_token)
+
+    async with await _client(app) as client:
+        first = await client.post(
+            "/api/v1/applications",
+            cookies={"drcc_session": session_id},
+            headers=idem_headers,
+            json={"name": "Replay Co", "tier_id": str(tier_id)},
+        )
+        replay = await client.post(
+            "/api/v1/applications",
+            cookies={"drcc_session": session_id},
+            headers=idem_headers,
+            json={"name": "Replay Co", "tier_id": str(tier_id)},
+        )
+
+    assert first.status_code == 201
+    assert replay.status_code == first.status_code == 201
+    assert replay.json() == first.json()
+    count = await session.execute(text("SELECT COUNT(*) AS cnt FROM applications WHERE name = 'Replay Co'"))
     assert count.one().cnt == 1
     await redis_client.delete(f"drcc:session:{session_id}")
 
@@ -229,6 +265,46 @@ async def test_update_application_stale_version_returns_409(
 
     assert stale_patch.status_code == 409
     assert stale_patch.json()["error"]["code"] == "CONCURRENCY_CONFLICT"
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_patch_application_explicit_null_clears_a_nullable_field(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """An explicit `"description": null` in the PATCH payload must clear the field, distinct
+    from omitting `description` entirely (which must leave it unchanged) -- found in review:
+    both cases were previously indistinguishable and neither could ever clear the field."""
+    admin_id = await _create_entra_admin(session)
+    tier_id = await _tier_id(session, "TIER_1")
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        created = await _create_application(client, session_id, csrf_token, tier_id, name="Notary Service")
+        app_id = created.json()["id"]
+        assert created.json()["description"] == "d"  # _create_application always sends "d"
+
+        omitted = await client.patch(
+            f"/api/v1/applications/{app_id}",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"external_system": "SN2", "expected_version": 1},
+        )
+        assert omitted.status_code == 200
+        assert omitted.json()["description"] == "d"
+
+        cleared = await client.patch(
+            f"/api/v1/applications/{app_id}",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"description": None, "expected_version": 2},
+        )
+
+    assert cleared.status_code == 200
+    assert cleared.json()["description"] is None
+    row = await session.execute(text("SELECT description FROM applications WHERE id = :id"), {"id": app_id})
+    assert row.scalar_one() is None
     await redis_client.delete(f"drcc:session:{session_id}")
 
 
@@ -431,6 +507,21 @@ async def test_set_owners_replaces_prior_slots_and_audits_once(
         {"aid": app_id},
     )
     assert audit_count.one().cnt == 2
+
+    second_audit = await session.execute(
+        text(
+            "SELECT before_data, after_data FROM audit_events "
+            "WHERE entity_id = :aid AND action = 'APPLICATION_OWNERS_SET' "
+            "ORDER BY occurred_at DESC LIMIT 1"
+        ),
+        {"aid": app_id},
+    )
+    audited = second_audit.one()
+    # The swap (owner A -> owner B in the same slot) must be reconstructable from the audit
+    # row alone: the prior assignment (owner A) only ever appears here, since the DB row was
+    # UPDATEd in place, not soft-deleted-and-reinserted (found in review).
+    assert audited.before_data["owners"]["SYSTEM_APPLICATION:1"] == str(owner_a)
+    assert audited.after_data["owners"]["SYSTEM_APPLICATION:1"] == str(owner_b)
     await redis_client.delete(f"drcc:session:{session_id}")
 
 
