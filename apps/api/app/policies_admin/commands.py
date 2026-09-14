@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import write_audit
 from app.core.clock import Clock, SystemClock
 from app.core.errors import AppError
-from app.policies_admin.models import PolicyValue
-from app.policies_admin.queries import get_policy_definition
+from app.policies_admin.models import PolicyDefinition, PolicyValue
+from app.policies_admin.queries import PolicyService, get_policy_definition
 from app.users_teams_org.authorization import AuthorizationService, Capability, Scope
 
 #: schema_v2_reconciliation.sql:434 -- fixed at HARD_STOP, not configurable; the service must
@@ -32,6 +32,40 @@ class PolicyKeyNotConfigurableError(AppError):
 
     def __init__(self, key: str) -> None:
         super().__init__(f"Policy key {key!r} is fixed and cannot be overridden.")
+
+
+async def resolve_all_authorized(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID,
+    event_id: uuid.UUID | None = None,
+    work_stream_id: uuid.UUID | None = None,
+    application_id: uuid.UUID | None = None,
+) -> list[tuple[PolicyDefinition, Any]]:
+    """`GET /admin/policies` at global scope (no ids passed) is open to any authenticated user --
+    it's just the global defaults, not sensitive per-Event data. But an event/stream/application
+    scope must not be readable by an arbitrary authenticated user who happens to know or guess
+    its UUID: any actor could otherwise pass another Event's id and read its effective policy
+    overrides with no visibility check at all (found in review). Reuse the same
+    `GLOBAL_POLICY_CONFIG` capability writes are gated on -- Admin always, or a Coordinator
+    scoped to that exact scope -- since this module has no Event-participant visibility of its
+    own (that's dr_events', BUILD-04+) and inventing a parallel read-only grant here would be a
+    product decision, not an engineering one."""
+    for scope_type, scope_id in (
+        ("DR_EVENT", event_id),
+        ("WORK_STREAM", work_stream_id),
+        ("APPLICATION", application_id),
+    ):
+        if scope_id is not None:
+            await AuthorizationService.require(
+                session,
+                actor_id,
+                Capability.GLOBAL_POLICY_CONFIG,
+                Scope(scope_type=scope_type, scope_id=scope_id),
+            )
+    return await PolicyService.resolve_all(
+        session, event_id=event_id, work_stream_id=work_stream_id, application_id=application_id
+    )
 
 
 async def set_policy_value(

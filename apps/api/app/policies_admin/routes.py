@@ -8,8 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.idempotency import complete, require_idempotency_key
 from app.identity_auth.dependencies import ClockDep, CurrentSession, DbSession, RequireCsrfDependency
-from app.policies_admin.commands import set_policy_value
-from app.policies_admin.queries import PolicyService
+from app.policies_admin.commands import resolve_all_authorized, set_policy_value
 from app.policies_admin.schemas import (
     PolicyItemResponse,
     PolicyListResponse,
@@ -28,9 +27,12 @@ async def get_policies_route(
     work_stream_id: Annotated[uuid.UUID | None, Query()] = None,
     application_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> PolicyListResponse:
-    _ = session_data
-    resolved = await PolicyService.resolve_all(
-        session, event_id=event_id, work_stream_id=work_stream_id, application_id=application_id
+    resolved = await resolve_all_authorized(
+        session,
+        actor_id=session_data.user_id,
+        event_id=event_id,
+        work_stream_id=work_stream_id,
+        application_id=application_id,
     )
     return PolicyListResponse(
         items=[

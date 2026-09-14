@@ -224,6 +224,61 @@ async def test_resolve_falls_back_to_global_default_when_no_override(
 
 
 @pytest.mark.asyncio
+async def test_get_policies_denies_scoped_read_without_grant_at_that_scope(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """A plain authenticated user (no roles at all) must not be able to read another Event's
+    effective policy overrides just by knowing or guessing its UUID -- `event_id`/
+    `work_stream_id`/`application_id` are opaque foreign keys, not authorization (invariant #1;
+    found in review: `session_data` was discarded and the scoped read had no check at all)."""
+    plain_user = await _create_user(session, display_name="No Roles")
+    event_id = await _insert_dr_event(session)
+    app = _build_app(session, redis_client, clock)
+    session_id, _ = await _create_session_cookie(session, redis_client, clock, plain_user)
+
+    async with await _client(app) as client:
+        response = await _get_policies(client, session_id, event_id=event_id)
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "AUTHORIZATION_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_get_policies_denies_coordinator_reading_a_different_events_scope(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """A Coordinator's `DR_EVENT`-scoped grant only covers their own Event -- reading a
+    different Event's scoped overrides is denied, mirroring the write-side `"SCOPE"` marker
+    semantics tested in `test_coordinator_cannot_write_global_scope`."""
+    coordinator_id = await _create_user(session, display_name="Coordinator")
+    own_event_id = uuid.uuid4()
+    other_event_id = await _insert_dr_event(session)
+    await _grant_role(session, coordinator_id, "DR_COORDINATOR", scope_type="DR_EVENT", scope_id=own_event_id)
+    app = _build_app(session, redis_client, clock)
+    session_id, _ = await _create_session_cookie(session, redis_client, clock, coordinator_id)
+
+    async with await _client(app) as client:
+        response = await _get_policies(client, session_id, event_id=other_event_id)
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_get_policies_global_scope_stays_open_to_any_authenticated_user(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+) -> None:
+    """No scope ids passed -- the response is only global defaults/overrides, not
+    per-Event data, so this must stay unrestricted (unlike the scoped case above)."""
+    app = _build_app(session, redis_client, clock)
+    session_id, _ = await _create_session_cookie(session, redis_client, clock, seed_user)
+
+    async with await _client(app) as client:
+        response = await _get_policies(client, session_id)
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_resolve_prefers_application_over_work_stream_over_event_over_global(
     session: AsyncSession, redis_client: Redis, clock: FakeClock
 ) -> None:

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.applications_catalog.commands import (
+    UNSET,
     ApplicationNotFoundError,
     OwnerSlot,
     TierUpdate,
@@ -98,7 +99,7 @@ async def get_application_route(
     return _application_response(application, owners)
 
 
-@router.post("/applications", dependencies=[RequireCsrfDependency], response_model=None)
+@router.post("/applications", status_code=201, dependencies=[RequireCsrfDependency], response_model=None)
 async def post_create_application(
     request: Request,
     body: CreateApplicationRequest,
@@ -140,16 +141,17 @@ async def patch_application(
         assert ctx.stored_status is not None
         return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
 
+    fields_set = body.model_fields_set
     application = await update_application(
         session,
         actor_id=session_data.user_id,
         application_id=application_id,
         expected_version=body.expected_version,
-        name=body.name,
-        description=body.description,
-        tier_id=body.tier_id,
-        external_system=body.external_system,
-        external_id=body.external_id,
+        name=body.name if "name" in fields_set else UNSET,
+        description=body.description if "description" in fields_set else UNSET,
+        tier_id=body.tier_id if "tier_id" in fields_set else UNSET,
+        external_system=body.external_system if "external_system" in fields_set else UNSET,
+        external_id=body.external_id if "external_id" in fields_set else UNSET,
         clock=clock,
     )
     owners = await list_application_owners(session, application_id)
