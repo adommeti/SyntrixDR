@@ -1,6 +1,219 @@
 {
   "components": {
     "schemas": {
+      "ApplicationHistoryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "ApplicationHistoryResponse",
+        "type": "object"
+      },
+      "ApplicationListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationResponse"
+            },
+            "title": "Applications",
+            "type": "array"
+          }
+        },
+        "required": [
+          "applications"
+        ],
+        "title": "ApplicationListResponse",
+        "type": "object"
+      },
+      "ApplicationOwnerResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "owner_order": {
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Owner Order",
+            "type": "integer"
+          },
+          "owner_type": {
+            "title": "Owner Type",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner_type",
+          "owner_order",
+          "user_id"
+        ],
+        "title": "ApplicationOwnerResponse",
+        "type": "object"
+      },
+      "ApplicationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "external_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External System"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owners": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ApplicationOwnerResponse"
+            },
+            "title": "Owners",
+            "type": "array"
+          },
+          "tier_id": {
+            "format": "uuid",
+            "title": "Tier Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "tier_id",
+          "external_system",
+          "external_id",
+          "version",
+          "created_at",
+          "updated_at",
+          "deleted_at"
+        ],
+        "title": "ApplicationResponse",
+        "type": "object"
+      },
+      "CreateApplicationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "external_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External System"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "tier_id": {
+            "format": "uuid",
+            "title": "Tier Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "tier_id"
+        ],
+        "title": "CreateApplicationRequest",
+        "type": "object"
+      },
       "CreateLocalUserRequest": {
         "additionalProperties": false,
         "properties": {
@@ -228,6 +441,63 @@
         "title": "PasswordResetRequestResponse",
         "type": "object"
       },
+      "PolicyItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "value_type": {
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "description",
+          "value_type",
+          "value"
+        ],
+        "title": "PolicyItemResponse",
+        "type": "object"
+      },
+      "PolicyListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PolicyListResponse",
+        "type": "object"
+      },
       "ReauthRequest": {
         "additionalProperties": false,
         "properties": {
@@ -281,6 +551,85 @@
           "expires_at"
         ],
         "title": "ReauthResponse",
+        "type": "object"
+      },
+      "SetApplicationOwnerItem": {
+        "additionalProperties": false,
+        "properties": {
+          "owner_order": {
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Owner Order",
+            "type": "integer"
+          },
+          "owner_type": {
+            "title": "Owner Type",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner_type",
+          "owner_order",
+          "user_id"
+        ],
+        "title": "SetApplicationOwnerItem",
+        "type": "object"
+      },
+      "SetApplicationOwnersRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "owners": {
+            "items": {
+              "$ref": "#/components/schemas/SetApplicationOwnerItem"
+            },
+            "title": "Owners",
+            "type": "array"
+          }
+        },
+        "required": [
+          "owners"
+        ],
+        "title": "SetApplicationOwnersRequest",
+        "type": "object"
+      },
+      "SetPolicyValueRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "scope_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Id"
+          },
+          "scope_type": {
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "scope_type"
+        ],
+        "title": "SetPolicyValueRequest",
         "type": "object"
       },
       "TeamListResponse": {
@@ -370,6 +719,123 @@
         "title": "TeamWorkloadResponse",
         "type": "object"
       },
+      "TierListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "tiers": {
+            "items": {
+              "$ref": "#/components/schemas/TierResponse"
+            },
+            "title": "Tiers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tiers"
+        ],
+        "title": "TierListResponse",
+        "type": "object"
+      },
+      "TierResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "default_health_weight": {
+            "title": "Default Health Weight",
+            "type": "number"
+          },
+          "default_sla_minutes": {
+            "title": "Default Sla Minutes",
+            "type": "integer"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "rank",
+          "default_sla_minutes",
+          "default_health_weight",
+          "description",
+          "version"
+        ],
+        "title": "TierResponse",
+        "type": "object"
+      },
+      "TierUpdateItem": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "default_health_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Default Health Weight"
+          },
+          "default_sla_minutes": {
+            "title": "Default Sla Minutes",
+            "type": "integer"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "expected_version",
+          "default_sla_minutes",
+          "default_health_weight"
+        ],
+        "title": "TierUpdateItem",
+        "type": "object"
+      },
       "TotpEnrolResponse": {
         "additionalProperties": false,
         "properties": {
@@ -415,6 +881,93 @@
           "message"
         ],
         "title": "TotpVerifyResponse",
+        "type": "object"
+      },
+      "UpdateApplicationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "external_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External System"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "tier_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier Id"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "UpdateApplicationRequest",
+        "type": "object"
+      },
+      "UpdateTiersRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "tiers": {
+            "items": {
+              "$ref": "#/components/schemas/TierUpdateItem"
+            },
+            "title": "Tiers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tiers"
+        ],
+        "title": "UpdateTiersRequest",
         "type": "object"
       },
       "UserResponse": {
@@ -554,6 +1107,429 @@
         "summary": "Post Create Local User",
         "tags": [
           "users_teams_org"
+        ]
+      }
+    },
+    "/api/v1/admin/policies": {
+      "get": {
+        "operationId": "get_policies_route_api_v1_admin_policies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "event_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_stream_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Stream Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "application_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Application Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Policies Route",
+        "tags": [
+          "policies_admin"
+        ]
+      },
+      "put": {
+        "operationId": "put_policy_route_api_v1_admin_policies_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPolicyValueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Policy Route",
+        "tags": [
+          "policies_admin"
+        ]
+      }
+    },
+    "/api/v1/admin/tiers": {
+      "get": {
+        "operationId": "list_tiers_route_api_v1_admin_tiers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TierListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tiers Route",
+        "tags": [
+          "applications_catalog"
+        ]
+      },
+      "put": {
+        "operationId": "put_tiers_api_v1_admin_tiers_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTiersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Tiers",
+        "tags": [
+          "applications_catalog"
+        ]
+      }
+    },
+    "/api/v1/applications": {
+      "get": {
+        "operationId": "list_applications_route_api_v1_applications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Applications Route",
+        "tags": [
+          "applications_catalog"
+        ]
+      },
+      "post": {
+        "operationId": "post_create_application_api_v1_applications_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create Application",
+        "tags": [
+          "applications_catalog"
+        ]
+      }
+    },
+    "/api/v1/applications/{application_id}": {
+      "get": {
+        "operationId": "get_application_route_api_v1_applications__application_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Application Route",
+        "tags": [
+          "applications_catalog"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_application_api_v1_applications__application_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Application",
+        "tags": [
+          "applications_catalog"
+        ]
+      }
+    },
+    "/api/v1/applications/{application_id}/history": {
+      "get": {
+        "operationId": "get_application_history_route_api_v1_applications__application_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Application History Route",
+        "tags": [
+          "applications_catalog"
+        ]
+      }
+    },
+    "/api/v1/applications/{application_id}/owners": {
+      "put": {
+        "operationId": "put_application_owners_api_v1_applications__application_id__owners_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetApplicationOwnersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Application Owners",
+        "tags": [
+          "applications_catalog"
         ]
       }
     },

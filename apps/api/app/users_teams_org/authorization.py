@@ -66,6 +66,11 @@ class Capability(str, Enum):
     EXPORT_IMPORT_FULL_PACKAGE = "EXPORT_IMPORT_FULL_PACKAGE"
     CREATE_LOCAL_FALLBACK_USER = "CREATE_LOCAL_FALLBACK_USER"
     AI_ACT = "AI_ACT"
+    #: BUILD-03: RBAC_MATRIX.md has no row for Application/Tier master data (see
+    #: BUILD-03.plan.md Risk #1) — conservative reading, Admin-only, same class of action as
+    #: the modeled "Global policy/config" row minus its Coordinator scoped-override carve-out.
+    MANAGE_APPLICATION_CATALOG = "MANAGE_APPLICATION_CATALOG"
+    MANAGE_TIERS = "MANAGE_TIERS"
 
 
 #: Capabilities `GLOBAL_READONLY` may exercise (read-only; RBAC_MATRIX.md's only read-labeled row).
@@ -199,6 +204,8 @@ GRANTS: dict[Capability, dict[str, bool | str]] = {
     Capability.PUBLISH_OFFICIAL_REPORT: {"GLOBAL_ADMIN": True, "DR_COORDINATOR": True},
     Capability.EXPORT_IMPORT_FULL_PACKAGE: {"GLOBAL_ADMIN": True, "DR_COORDINATOR": "SCOPE"},
     Capability.CREATE_LOCAL_FALLBACK_USER: {"GLOBAL_ADMIN": True},
+    Capability.MANAGE_APPLICATION_CATALOG: {"GLOBAL_ADMIN": True},
+    Capability.MANAGE_TIERS: {"GLOBAL_ADMIN": True},
     Capability.AI_ACT: {
         "GLOBAL_ADMIN": True,
         "DR_COORDINATOR": True,

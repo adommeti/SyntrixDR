@@ -58,6 +58,8 @@ async def write_audit(
     action: str,
     metadata: dict[str, Any] | None = None,
     dr_event_id: uuid.UUID | None = None,
+    before: dict[str, Any] | None = None,
+    after: dict[str, Any] | None = None,
 ) -> None:
     """Write an audit event. Does not commit the session; caller controls the transaction boundary.
 
@@ -69,6 +71,8 @@ async def write_audit(
         action: The action taken (e.g. "CREATE", "UPDATE", "DELETE", "LOGIN")
         metadata: Additional context (e.g. change details, reason code)
         dr_event_id: Optional DR Event context (None for auth events)
+        before: Optional entity state before the change, for reconstructable history
+        after: Optional entity state after the change, for reconstructable history
     """
     event = AuditEvent(
         dr_event_id=dr_event_id,
@@ -77,6 +81,8 @@ async def write_audit(
         entity_type=entity_type,
         entity_id=entity_id,
         action=action,
+        before_data=before,
+        after_data=after,
         metadata_=metadata or {},
     )
     session.add(event)

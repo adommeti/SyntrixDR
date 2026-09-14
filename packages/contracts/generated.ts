@@ -25,6 +25,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Policies Route */
+        get: operations["get_policies_route_api_v1_admin_policies_get"];
+        /** Put Policy Route */
+        put: operations["put_policy_route_api_v1_admin_policies_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/tiers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tiers Route */
+        get: operations["list_tiers_route_api_v1_admin_tiers_get"];
+        /** Put Tiers */
+        put: operations["put_tiers_api_v1_admin_tiers_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Applications Route */
+        get: operations["list_applications_route_api_v1_applications_get"];
+        put?: never;
+        /** Post Create Application */
+        post: operations["post_create_application_api_v1_applications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{application_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Application Route */
+        get: operations["get_application_route_api_v1_applications__application_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Application */
+        patch: operations["patch_application_api_v1_applications__application_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/applications/{application_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Application History Route */
+        get: operations["get_application_history_route_api_v1_applications__application_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/{application_id}/owners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Application Owners */
+        put: operations["put_application_owners_api_v1_applications__application_id__owners_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/csrf": {
         parameters: {
             query?: never;
@@ -319,6 +425,89 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ApplicationHistoryResponse */
+        ApplicationHistoryResponse: {
+            /**
+             * Items
+             * @default []
+             */
+            items: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ApplicationListResponse */
+        ApplicationListResponse: {
+            /** Applications */
+            applications: components["schemas"]["ApplicationResponse"][];
+        };
+        /** ApplicationOwnerResponse */
+        ApplicationOwnerResponse: {
+            /** Owner Order */
+            owner_order: number;
+            /** Owner Type */
+            owner_type: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** ApplicationResponse */
+        ApplicationResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Description */
+            description: string | null;
+            /** External Id */
+            external_id: string | null;
+            /** External System */
+            external_system: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Owners
+             * @default []
+             */
+            owners: components["schemas"]["ApplicationOwnerResponse"][];
+            /**
+             * Tier Id
+             * Format: uuid
+             */
+            tier_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** CreateApplicationRequest */
+        CreateApplicationRequest: {
+            /** Description */
+            description?: string | null;
+            /** External Id */
+            external_id?: string | null;
+            /** External System */
+            external_system?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Tier Id
+             * Format: uuid
+             */
+            tier_id: string;
+        };
         /** CreateLocalUserRequest */
         CreateLocalUserRequest: {
             /** Display Name */
@@ -401,6 +590,24 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** PolicyItemResponse */
+        PolicyItemResponse: {
+            /** Description */
+            description: string | null;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Value */
+            value: unknown;
+            /** Value Type */
+            value_type: string;
+        };
+        /** PolicyListResponse */
+        PolicyListResponse: {
+            /** Items */
+            items: components["schemas"]["PolicyItemResponse"][];
+        };
         /** ReauthRequest */
         ReauthRequest: {
             /** Method */
@@ -416,6 +623,34 @@ export interface components {
             expires_at: string;
             /** Granted At */
             granted_at: string;
+        };
+        /** SetApplicationOwnerItem */
+        SetApplicationOwnerItem: {
+            /** Owner Order */
+            owner_order: number;
+            /** Owner Type */
+            owner_type: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** SetApplicationOwnersRequest */
+        SetApplicationOwnersRequest: {
+            /** Owners */
+            owners: components["schemas"]["SetApplicationOwnerItem"][];
+        };
+        /** SetPolicyValueRequest */
+        SetPolicyValueRequest: {
+            /** Key */
+            key: string;
+            /** Scope Id */
+            scope_id?: string | null;
+            /** Scope Type */
+            scope_type: string;
+            /** Value */
+            value: unknown;
         };
         /** TeamListResponse */
         TeamListResponse: {
@@ -448,6 +683,44 @@ export interface components {
             /** Team Name */
             team_name: string;
         };
+        /** TierListResponse */
+        TierListResponse: {
+            /** Tiers */
+            tiers: components["schemas"]["TierResponse"][];
+        };
+        /** TierResponse */
+        TierResponse: {
+            /** Code */
+            code: string;
+            /** Default Health Weight */
+            default_health_weight: number;
+            /** Default Sla Minutes */
+            default_sla_minutes: number;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Rank */
+            rank: number;
+            /** Version */
+            version: number;
+        };
+        /** TierUpdateItem */
+        TierUpdateItem: {
+            /** Code */
+            code: string;
+            /** Default Health Weight */
+            default_health_weight: number | string;
+            /** Default Sla Minutes */
+            default_sla_minutes: number;
+            /** Description */
+            description?: string | null;
+            /** Expected Version */
+            expected_version: number;
+        };
         /** TotpEnrolResponse */
         TotpEnrolResponse: {
             /** Provisioning Uri */
@@ -464,6 +737,26 @@ export interface components {
         TotpVerifyResponse: {
             /** Message */
             message: string;
+        };
+        /** UpdateApplicationRequest */
+        UpdateApplicationRequest: {
+            /** Description */
+            description?: string | null;
+            /** Expected Version */
+            expected_version: number;
+            /** External Id */
+            external_id?: string | null;
+            /** External System */
+            external_system?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Tier Id */
+            tier_id?: string | null;
+        };
+        /** UpdateTiersRequest */
+        UpdateTiersRequest: {
+            /** Tiers */
+            tiers: components["schemas"]["TierUpdateItem"][];
         };
         /** UserResponse */
         UserResponse: {
@@ -513,6 +806,310 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateLocalUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_policies_route_api_v1_admin_policies_get: {
+        parameters: {
+            query?: {
+                event_id?: string | null;
+                work_stream_id?: string | null;
+                application_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_policy_route_api_v1_admin_policies_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPolicyValueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tiers_route_api_v1_admin_tiers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TierListResponse"];
+                };
+            };
+        };
+    };
+    put_tiers_api_v1_admin_tiers_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTiersRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_applications_route_api_v1_applications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationListResponse"];
+                };
+            };
+        };
+    };
+    post_create_application_api_v1_applications_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateApplicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_application_route_api_v1_applications__application_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_application_api_v1_applications__application_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateApplicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_application_history_route_api_v1_applications__application_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_application_owners_api_v1_applications__application_id__owners_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetApplicationOwnersRequest"];
             };
         };
         responses: {

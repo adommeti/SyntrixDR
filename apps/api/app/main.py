@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.applications_catalog.routes import router as applications_catalog_router
 from app.core.config import Settings, get_settings
 from app.core.database import make_engine, make_session_factory
 from app.core.errors import AppError, app_error_handler, unhandled_error_handler
@@ -16,6 +17,7 @@ from app.core.telemetry import configure_telemetry
 from app.identity_auth.oidc import register_entra_oauth
 from app.identity_auth.routes import router as identity_auth_router
 from app.identity_auth.session_store import RedisSessionStore
+from app.policies_admin.routes import router as policies_admin_router
 from app.users_teams_org.routes import router as users_teams_org_router
 
 CORRELATION_ID_HEADER = "X-Correlation-Id"
@@ -65,6 +67,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(Exception, unhandled_error_handler)
     app.include_router(identity_auth_router)
     app.include_router(users_teams_org_router)
+    app.include_router(applications_catalog_router)
+    app.include_router(policies_admin_router)
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
