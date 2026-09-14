@@ -183,7 +183,9 @@ jobs:
           sh /tmp/install-syft.sh -b "$TOOL_BIN"
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh -o /tmp/install-grype.sh
           sh /tmp/install-grype.sh -b "$TOOL_BIN"
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oP '"tag_name": "v\K[^"]+')_linux_x64.tar.gz | tar -xz -C "$TOOL_BIN" gitleaks
+          GITLEAKS_VERSION="$(curl -sSf -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oP '"tag_name": "v\K[^"]+')"
+          test -n "$GITLEAKS_VERSION" # fail loudly instead of building a malformed download URL (found in CI: unauthenticated calls to this endpoint get rate-limited and return no tag_name)
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz -C "$TOOL_BIN" gitleaks
       - name: run security gate
         env: { SECURITY_REQUIRE_ALL: "1", SECURITY_FAIL_ON: critical }
         run: scripts/security.sh
