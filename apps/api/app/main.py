@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request, Response
 from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.core.config import Settings, get_settings
 from app.core.database import make_engine, make_session_factory
@@ -37,6 +38,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_telemetry(settings)
 
     app = FastAPI(title="Syntrix DR Command Center API", version="0.1.0")
+    # Authlib's authorize_redirect()/authorize_access_token() need Starlette's session for OIDC
+    # state/nonce — a short-lived signed cookie for the handshake only, unrelated to and separate
+    # from the drcc_session cookie (D-239's Redis-backed session, still the only auth boundary).
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_secret,
+        session_cookie="drcc_oidc_handshake",
+        same_site="lax",
+        https_only=settings.drcc_env != "local",
+        max_age=600,
+    )
     app.state.settings = settings
     app.state.engine = make_engine(settings.database_url)
     app.state.session_factory = make_session_factory(app.state.engine)
