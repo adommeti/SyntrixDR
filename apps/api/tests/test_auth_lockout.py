@@ -14,9 +14,10 @@ from app.core.clock import Clock, FakeClock
 from app.identity_auth.commands import (
     AccountLockedError,
     InvalidCredentialsError,
+    TotpInvalidError,
     local_login,
 )
-from app.identity_auth.security import PasswordHasher
+from app.identity_auth.security import PasswordHasher, generate_totp_secret
 from app.identity_auth.session_store import SessionData
 
 pytestmark = [pytest.mark.api, pytest.mark.auth, pytest.mark.integration]
@@ -75,12 +76,93 @@ async def _create_local_credentials(
     await session.flush()
 
 
+async def _create_local_credentials_with_totp(
+    session: AsyncSession, user_id: uuid.UUID, email: str, password: str
+) -> str:
+    """Helper: create a local_credentials row with TOTP enabled; returns the secret."""
+    hasher = PasswordHasher()
+    password_hash = hasher.hash_password(password)
+    secret = generate_totp_secret()
+
+    await session.execute(
+        text(
+            "INSERT INTO local_credentials (id, user_id, password_hash, algorithm, failed_attempts, "
+            "password_changed_at, totp_enabled, totp_secret_encrypted) "
+            "VALUES (:id, :user_id, :hash, 'argon2id', 0, :now, true, :secret)"
+        ),
+        {
+            "id": uuid.uuid4(),
+            "user_id": user_id,
+            "hash": password_hash,
+            "now": datetime.now(UTC),
+            "secret": secret,
+        },
+    )
+    await session.flush()
+    return secret
+
+
+@pytest.mark.asyncio
+async def test_wrong_totp_codes_count_toward_lockout(session: AsyncSession, clock: FakeClock) -> None:
+    """An attacker who already knows the password must not get unlimited guesses against the
+    six-digit TOTP code — invalid TOTP attempts must count toward the same failed_attempts
+    lockout counter as wrong passwords (found in review: this branch only wrote an audit event
+    and never touched failed_attempts/locked_until)."""
+    user_id = uuid.uuid4()
+    email = "totp-lockout@example.com"
+    password = "CorrectPassword123!"
+
+    await session.execute(
+        text(
+            "INSERT INTO users (id, identity_type, display_name, email) "
+            "VALUES (:id, 'LOCAL', 'Test User', :email)"
+        ),
+        {"id": user_id, "email": email},
+    )
+    await _create_local_credentials_with_totp(session, user_id, email, password)
+    await session.commit()
+
+    store = _MockSessionStore()
+    settings_lockout_threshold = 10
+
+    for attempt in range(1, settings_lockout_threshold):
+        with pytest.raises(TotpInvalidError):
+            await local_login(session, store, clock, email=email, password=password, totp_code="000000")
+        await session.commit()
+
+        result = await session.execute(
+            text("SELECT failed_attempts, locked_until FROM local_credentials WHERE user_id = :uid"),
+            {"uid": user_id},
+        )
+        row = result.one()
+        assert row.failed_attempts == attempt
+        assert row.locked_until is None
+
+    with pytest.raises(AccountLockedError):
+        await local_login(session, store, clock, email=email, password=password, totp_code="000000")
+    await session.commit()
+
+    result = await session.execute(
+        text("SELECT failed_attempts, locked_until FROM local_credentials WHERE user_id = :uid"),
+        {"uid": user_id},
+    )
+    row = result.one()
+    assert row.failed_attempts == settings_lockout_threshold
+    assert row.locked_until is not None
+
+    # Even the correct TOTP code is now rejected — the account is locked, not just the code.
+    with pytest.raises(AccountLockedError):
+        await local_login(session, store, clock, email=email, password=password, totp_code="000000")
+
+
 @pytest.mark.asyncio
 async def test_ten_failed_attempts_within_window_triggers_lockout_on_eleventh(
     session: AsyncSession, clock: FakeClock
 ) -> None:
-    """After 10 failed login attempts within lockout_window_minutes,
-    the 11th attempt (even with correct password) raises AccountLockedError."""
+    """After 10 failed login attempts within lockout_window_minutes, the 10th failure itself
+    locks the account (expiry measured from that triggering failure, not a later request that
+    merely re-observes an already-stale count — found in review), and the 11th attempt (even
+    with correct password) raises AccountLockedError."""
     user_id = uuid.uuid4()
     email = "test@example.com"
     password = "CorrectPassword123!"
@@ -99,8 +181,8 @@ async def test_ten_failed_attempts_within_window_triggers_lockout_on_eleventh(
     store = _MockSessionStore()
     settings_lockout_threshold = 10
 
-    # Attempt 10 wrong passwords
-    for attempt in range(1, settings_lockout_threshold + 1):
+    # Attempts 1-9 are plain failures; the 10th crosses the threshold and locks immediately.
+    for attempt in range(1, settings_lockout_threshold):
         with pytest.raises(InvalidCredentialsError):
             await local_login(
                 session,
@@ -119,14 +201,20 @@ async def test_ten_failed_attempts_within_window_triggers_lockout_on_eleventh(
         )
         row = result.one()
         assert row.failed_attempts == attempt
+        assert row.locked_until is None
 
-    # Verify not locked yet (failed_attempts == threshold, but lockout happens ON exceeding threshold)
+    with pytest.raises(AccountLockedError):
+        await local_login(session, store, clock, email=email, password="WrongPassword123!", totp_code=None)
+    await session.commit()
+
+    # Verify the 10th failure both incremented the count and locked the account then and there.
     result = await session.execute(
-        text("SELECT locked_until FROM local_credentials WHERE user_id = :uid"),
+        text("SELECT failed_attempts, locked_until FROM local_credentials WHERE user_id = :uid"),
         {"uid": user_id},
     )
     row = result.one()
-    assert row.locked_until is None
+    assert row.failed_attempts == settings_lockout_threshold
+    assert row.locked_until is not None
 
     # 11th attempt with CORRECT password should still be locked
     with pytest.raises(AccountLockedError) as exc_info:

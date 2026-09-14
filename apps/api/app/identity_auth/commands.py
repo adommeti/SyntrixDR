@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
 from app.core.clock import Clock
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.identity_auth.mailer import send_password_reset_email
 from app.identity_auth.models import LocalCredential, PasswordResetToken, ReauthGrant, SessionRecord
@@ -97,6 +97,62 @@ class TotpEnrolResult:
     provisioning_uri: str
 
 
+async def _register_failed_attempt(
+    session: AsyncSession,
+    cred: LocalCredential,
+    user_id: uuid.UUID,
+    now: datetime,
+    settings: Settings,
+    *,
+    failure_action: str,
+) -> None:
+    """D-235: 10 failures/15 min triggers a 30-minute lockout. Shared by both the wrong-password
+    and invalid-TOTP branches of `local_login` — TOTP guesses were previously exempt entirely,
+    letting an attacker who already has the password brute-force the six-digit code with
+    unlimited attempts (found in review). `updated_at` doubles as "last failure time" (bumped on
+    every increment) since the frozen schema has no dedicated window-start column; a failure
+    outside the window starts a fresh count instead of accumulating forever. Locks (and commits)
+    on the SAME failure that crosses the threshold, so expiry is measured from the triggering
+    failure — a prior version only locked on a later request that merely re-observed an
+    already-stale count, restarting the cooldown from the wrong moment (found in review)."""
+    window = timedelta(minutes=settings.lockout_window_minutes)
+    if cred.failed_attempts > 0 and (now - cred.updated_at) > window:
+        cred.failed_attempts = 1
+    else:
+        cred.failed_attempts += 1
+    cred.updated_at = now
+
+    locked_until: datetime | None = None
+    if cred.failed_attempts >= settings.lockout_threshold:
+        locked_until = now + timedelta(minutes=settings.lockout_duration_minutes)
+        cred.locked_until = locked_until
+
+    await session.flush()
+    await write_audit(
+        session,
+        actor_user_id=None,
+        entity_type="USER",
+        entity_id=user_id,
+        action=failure_action,
+        metadata={"failed_attempts": cred.failed_attempts},
+    )
+    if locked_until is not None:
+        await write_audit(
+            session,
+            actor_user_id=None,
+            entity_type="USER",
+            entity_id=user_id,
+            action="AUTH_ACCOUNT_LOCKED",
+            metadata={"reason": "failed_attempts_exceeded"},
+        )
+    # Must commit before the caller raises: the request-scoped session has no auto-commit, so an
+    # exception propagating out of the route would roll back these writes, and every subsequent
+    # request would re-enter the lockout branch forever (found in review).
+    await session.commit()
+    if locked_until is not None:
+        raise AccountLockedError(locked_until.isoformat())
+
+
 async def local_login(
     session: AsyncSession,
     store: SessionStore,
@@ -159,49 +215,12 @@ async def local_login(
         cred.locked_until = None
         await session.flush()
 
-    # If failed_attempts has reached threshold, lock the account now
-    if cred.failed_attempts >= settings.lockout_threshold:
-        locked_until = now + timedelta(minutes=settings.lockout_duration_minutes)
-        cred.locked_until = locked_until
-        await write_audit(
-            session,
-            actor_user_id=None,
-            entity_type="USER",
-            entity_id=user_id,
-            action="AUTH_ACCOUNT_LOCKED",
-            metadata={"reason": "failed_attempts_exceeded"},
-        )
-        # Must commit before raising: the request-scoped session has no auto-commit, so an
-        # exception propagating out of the route would roll back locked_until, and every
-        # subsequent request would re-enter this same branch forever (lockout that never
-        # expires, since the reset-on-expiry branch above never has a real locked_until to
-        # compare against). Found in review.
-        await session.commit()
-        raise AccountLockedError(locked_until.isoformat())
-
     # Verify password
     hasher = PasswordHasher()
     if not hasher.verify_password(password, cred.password_hash):
-        # D-235: 10 failures/15 min. `updated_at` doubles as "last failure time" (bumped on
-        # every increment below) since the frozen schema has no dedicated window-start column.
-        # A failure outside the window starts a fresh count instead of accumulating forever.
-        window = timedelta(minutes=settings.lockout_window_minutes)
-        if cred.failed_attempts > 0 and (now - cred.updated_at) > window:
-            cred.failed_attempts = 1
-        else:
-            cred.failed_attempts += 1
-        cred.updated_at = now
-
-        await session.flush()
-        await write_audit(
-            session,
-            actor_user_id=None,
-            entity_type="USER",
-            entity_id=user_id,
-            action="AUTH_LOGIN_LOCAL_FAILURE",
-            metadata={"failed_attempts": cred.failed_attempts},
+        await _register_failed_attempt(
+            session, cred, user_id, now, settings, failure_action="AUTH_LOGIN_LOCAL_FAILURE"
         )
-        await session.commit()
         raise InvalidCredentialsError()
 
     # Password is correct; check TOTP if enabled
@@ -211,14 +230,13 @@ async def local_login(
             raise TotpRequiredError()
 
         if not verify_totp_code(cred.totp_secret_encrypted or "", totp_code):
-            await write_audit(
-                session,
-                actor_user_id=None,
-                entity_type="USER",
-                entity_id=user_id,
-                action="AUTH_TOTP_FAILED",
+            # D-235: an attacker who already knows the password must not get unlimited guesses
+            # against the six-digit TOTP code — found in review that this branch only audited
+            # the failure and never counted it toward the same lockout threshold as a wrong
+            # password.
+            await _register_failed_attempt(
+                session, cred, user_id, now, settings, failure_action="AUTH_TOTP_FAILED"
             )
-            await session.commit()
             raise TotpInvalidError()
 
     # Success: reset failed attempts, create session
