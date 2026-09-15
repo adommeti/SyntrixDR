@@ -172,8 +172,13 @@ class DrEventTransitionService:
         WARNING-severity failures never block; both are recorded in this transition's audit
         metadata. An OFF-severity key is skipped for this call."""
         clock = clock or SystemClock()
-        event = await _load_for_update(session, event_id)
+        # Authorization before existence (invariant #1): EVENT_LIFECYCLE_COMMAND is an unconditional
+        # Admin/Coordinator-only capability, not participant-scoped, so checking it first means an
+        # unauthorized actor gets the same 403 whether the Event exists or not -- loading (and row-
+        # locking) first would otherwise 404 a nonexistent Event but 403 an existing one, leaking
+        # existence to any authenticated caller (found in review).
         await AuthorizationService.require(session, actor_id, Capability.EVENT_LIFECYCLE_COMMAND)
+        event = await _load_for_update(session, event_id)
         if event.version != expected_version:
             raise ConcurrencyConflictError()
         _assert_legal(event.status, "ACTIVE")
@@ -232,8 +237,13 @@ class DrEventTransitionService:
         clock: Clock | None = None,
     ) -> DrEvent:
         clock = clock or SystemClock()
-        event = await _load_for_update(session, event_id)
+        # Authorization before existence (invariant #1): EVENT_LIFECYCLE_COMMAND is an unconditional
+        # Admin/Coordinator-only capability, not participant-scoped, so checking it first means an
+        # unauthorized actor gets the same 403 whether the Event exists or not -- loading (and row-
+        # locking) first would otherwise 404 a nonexistent Event but 403 an existing one, leaking
+        # existence to any authenticated caller (found in review).
         await AuthorizationService.require(session, actor_id, Capability.EVENT_LIFECYCLE_COMMAND)
+        event = await _load_for_update(session, event_id)
         if event.version != expected_version:
             raise ConcurrencyConflictError()
         _assert_legal(event.status, "FAILOVER_IN_PROGRESS")
@@ -310,8 +320,13 @@ class DrEventTransitionService:
         only gate for now — do not silently wire a stronger check in without updating this
         comment and the plan's Risk #3."""
         clock = clock or SystemClock()
-        event = await _load_for_update(session, event_id)
+        # Authorization before existence (invariant #1): EVENT_LIFECYCLE_COMMAND is an unconditional
+        # Admin/Coordinator-only capability, not participant-scoped, so checking it first means an
+        # unauthorized actor gets the same 403 whether the Event exists or not -- loading (and row-
+        # locking) first would otherwise 404 a nonexistent Event but 403 an existing one, leaking
+        # existence to any authenticated caller (found in review).
         await AuthorizationService.require(session, actor_id, Capability.EVENT_LIFECYCLE_COMMAND)
+        event = await _load_for_update(session, event_id)
         if event.version != expected_version:
             raise ConcurrencyConflictError()
         _assert_legal(event.status, "FAILED_OVER")
@@ -338,8 +353,13 @@ class DrEventTransitionService:
         clock: Clock | None = None,
     ) -> DrEvent:
         clock = clock or SystemClock()
-        event = await _load_for_update(session, event_id)
+        # Authorization before existence (invariant #1): EVENT_LIFECYCLE_COMMAND is an unconditional
+        # Admin/Coordinator-only capability, not participant-scoped, so checking it first means an
+        # unauthorized actor gets the same 403 whether the Event exists or not -- loading (and row-
+        # locking) first would otherwise 404 a nonexistent Event but 403 an existing one, leaking
+        # existence to any authenticated caller (found in review).
         await AuthorizationService.require(session, actor_id, Capability.EVENT_LIFECYCLE_COMMAND)
+        event = await _load_for_update(session, event_id)
         if event.version != expected_version:
             raise ConcurrencyConflictError()
         _assert_legal(event.status, "FAILBACK_IN_PROGRESS")
@@ -399,8 +419,13 @@ class DrEventTransitionService:
         to find -- an honestly-vacuous guard, not a silently-skipped one. CLAUDE.md:43's
         "FAILED_OVER -> CLOSED only when failback not required" is enforced below."""
         clock = clock or SystemClock()
-        event = await _load_for_update(session, event_id)
+        # Authorization before existence (invariant #1): EVENT_LIFECYCLE_COMMAND is an unconditional
+        # Admin/Coordinator-only capability, not participant-scoped, so checking it first means an
+        # unauthorized actor gets the same 403 whether the Event exists or not -- loading (and row-
+        # locking) first would otherwise 404 a nonexistent Event but 403 an existing one, leaking
+        # existence to any authenticated caller (found in review).
         await AuthorizationService.require(session, actor_id, Capability.EVENT_LIFECYCLE_COMMAND)
+        event = await _load_for_update(session, event_id)
         if event.version != expected_version:
             raise ConcurrencyConflictError()
         _assert_legal(event.status, "CLOSED")
@@ -446,8 +471,13 @@ class DrEventTransitionService:
         if not reason or not reason.strip():
             raise CancelReasonRequiredError()
 
-        event = await _load_for_update(session, event_id)
+        # Authorization before existence (invariant #1): EVENT_LIFECYCLE_COMMAND is an unconditional
+        # Admin/Coordinator-only capability, not participant-scoped, so checking it first means an
+        # unauthorized actor gets the same 403 whether the Event exists or not -- loading (and row-
+        # locking) first would otherwise 404 a nonexistent Event but 403 an existing one, leaking
+        # existence to any authenticated caller (found in review).
         await AuthorizationService.require(session, actor_id, Capability.EVENT_LIFECYCLE_COMMAND)
+        event = await _load_for_update(session, event_id)
         if event.version != expected_version:
             raise ConcurrencyConflictError()
         if event.status in _TERMINAL_STATES:

@@ -23,6 +23,11 @@ from app.applications_catalog.models import Application
 from app.core.database import Base
 from app.core.external_refs import milestones_table, task_dependencies_table, tasks_table
 
+# `Application` already has a real ORM-mapped class (unlike `tasks`/`task_dependencies`/
+# `milestones`, whose owning modules don't exist yet and use the `core/external_refs.py` stub
+# pattern below) -- importing the class directly, not a stub, is correct here; see the longer
+# rationale in `dr_events/models.py` for why this is a deliberate exception to
+# `.claude/rules/python-api.md`'s cross-module rule, not an oversight.
 _ = (Application, tasks_table, task_dependencies_table, milestones_table)  # FK-resolution registration
 
 

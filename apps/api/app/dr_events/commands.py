@@ -68,6 +68,14 @@ async def create_event(
     else:
         await AuthorizationService.require(session, actor_id, Capability.CREATE_PLANNED_DR_EVENT, Scope())
 
+    if plan_id is not None:
+        # Attaching a Plan is Plan management, not Event creation -- `instantiate_plan_into_event`
+        # already requires MANAGE_PLANS (Admin/Coordinator only) internally, but checking it here
+        # first gives a clear, immediate 403 instead of letting a scoped-but-non-MANAGE_PLANS App
+        # Owner get partway through Event/participant/DrApplication creation before failing on an
+        # unrelated capability deep in the call stack (found in review).
+        await AuthorizationService.require(session, actor_id, Capability.MANAGE_PLANS)
+
     if parent_dr_event_id is not None:
         # Existence alone isn't authorization (invariant #1): a foreign parent the actor can't
         # see must 404, not attach -- otherwise any actor with create rights on their own scope

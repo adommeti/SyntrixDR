@@ -24,6 +24,15 @@ from app.applications_catalog.models import Application, Tier
 from app.core.database import Base
 from app.users_teams_org.models import User
 
+# `.claude/rules/python-api.md`'s cross-module rule ("import commands.py/queries.py, never
+# models.py, except type-only imports guarded by TYPE_CHECKING") doesn't fit here: these FK
+# targets already have real ORM-mapped classes (`Application`/`Tier`/`User`), so the
+# `core/external_refs.py` stub pattern -- built specifically for FK targets whose owning module
+# doesn't exist yet (`tasks`/`task_dependencies`/`milestones`, below) -- would register a second,
+# conflicting `Table` for an already-mapped one. A `TYPE_CHECKING` guard would also defeat the
+# purpose: this import has to run at real import time so `Base.metadata` has the class registered
+# before mapper configuration, regardless of which test file happens to import `dr_events.models`
+# first (reviewed and accepted as a deliberate exception, not an oversight).
 _ = (User, Application, Tier)  # registers cross-module FK targets on Base.metadata
 
 #: D-222 auto-enrolment sources. The full DR Event entity (and TASK_ASSIGNEE/BLOCKER_OWNER/APP_OWNER/

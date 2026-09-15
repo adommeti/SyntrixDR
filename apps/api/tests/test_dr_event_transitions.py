@@ -222,6 +222,54 @@ async def test_app_owner_can_create_planned_event_scoped_to_own_application_only
 
 
 @pytest.mark.asyncio
+async def test_app_owner_cannot_attach_a_plan_they_cannot_manage(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """`plan_id` on `POST /dr-events` triggers `instantiate_plan_into_event`, which requires
+    `MANAGE_PLANS` (Admin/Coordinator only) -- an App Owner who is otherwise authorized to create
+    a PLANNED Event scoped to their own Application must still be rejected with a clear 403 for
+    the plan_id itself, not a mid-transaction failure after the Event/DrApplication rows exist
+    (found in review). Confirms no Event row is left behind."""
+    from app.plans_import.commands import create_plan, create_plan_version
+
+    admin_id = await _create_entra_admin(session)
+    plan = await create_plan(session, actor_id=admin_id, name="Owner-Blocked Plan", plan_type="FAILOVER")
+    source_version = await create_plan_version(
+        session, actor_id=admin_id, plan_id=plan.id, version_type="FINAL"
+    )
+
+    owner_id = await _create_user(session, display_name="Plan-less Owner")
+    own_app_id = await _create_application(session, name="Owner's Scoped App")
+    await _grant_role(session, owner_id, "APP_OWNER", scope_type="APPLICATION", scope_id=own_app_id)
+
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, owner_id)
+
+    async with await _client(app) as client:
+        response = await client.post(
+            "/api/v1/dr-events",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={
+                "name": "Owner Plan Attempt",
+                "event_type": "PLANNED_DR",
+                "application_ids": [str(own_app_id)],
+                "plan_id": str(plan.id),
+                "plan_version_id": str(source_version.id),
+            },
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "AUTHORIZATION_REQUIRED"
+
+    event_count = await session.execute(
+        text("SELECT COUNT(*) AS cnt FROM dr_events WHERE name = 'Owner Plan Attempt'")
+    )
+    assert event_count.one().cnt == 0
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
 async def test_app_owner_created_event_cannot_be_activated_by_that_owner(
     session: AsyncSession, redis_client: Redis, clock: FakeClock
 ) -> None:
@@ -1014,6 +1062,29 @@ async def test_unauthorized_actor_403_on_activate(
     async with await _client(app) as client:
         response = await client.post(
             f"/api/v1/dr-events/{event_id}/activate",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"expected_version": 1},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "AUTHORIZATION_REQUIRED"
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_unauthorized_actor_403_on_activate_of_nonexistent_event(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock, seed_user: uuid.UUID
+) -> None:
+    """Invariant #1: an unauthorized actor must get the same 403 whether the target Event exists
+    or not -- authorization is checked before the Event is loaded, so a 404-for-missing vs.
+    403-for-existing response pair can't be used to probe which UUIDs are real (found in review)."""
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, seed_user)
+
+    async with await _client(app) as client:
+        response = await client.post(
+            f"/api/v1/dr-events/{uuid.uuid4()}/activate",
             cookies={"drcc_session": session_id},
             headers=_idem_headers(csrf_token),
             json={"expected_version": 1},
