@@ -67,3 +67,32 @@ async def has_non_terminal_children(session: AsyncSession, parent_dr_event_id: u
         )
     )
     return result.first() is not None
+
+
+async def list_descendant_event_ids(session: AsyncSession, event_id: uuid.UUID) -> list[uuid.UUID]:
+    """`event_id` plus every Event reachable by following `parent_dr_event_id` down the tree
+    (a comprehensive DR's sub-DRs, D-219). BFS in Python, not a recursive CTE: the child depth
+    here is small (comprehensive DR -> sub-DRs), and no other module has an existing recursive-
+    query precedent to follow."""
+    seen = {event_id}
+    frontier = [event_id]
+    while frontier:
+        result = await session.execute(
+            select(DrEvent.id).where(DrEvent.parent_dr_event_id.in_(frontier), DrEvent.deleted_at.is_(None))
+        )
+        frontier = [row_id for row_id in result.scalars().all() if row_id not in seen]
+        seen.update(frontier)
+    return list(seen)
+
+
+async def list_descendant_dr_applications(session: AsyncSession, event_id: uuid.UUID) -> list[DrApplication]:
+    """D-219: "parent aggregates all descendant DR Applications for health/treemap/reporting" --
+    this is the aggregation query stub those future increments (rto_rpo_health, reporting_exports)
+    will consume; BUILD-04 has no health/treemap/reporting of its own to wire it into yet."""
+    descendant_ids = await list_descendant_event_ids(session, event_id)
+    result = await session.execute(
+        select(DrApplication).where(
+            DrApplication.dr_event_id.in_(descendant_ids), DrApplication.deleted_at.is_(None)
+        )
+    )
+    return list(result.scalars().all())

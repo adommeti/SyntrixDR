@@ -21,7 +21,7 @@ from app.users_teams_org.authorization import AuthorizationService, Capability
 
 class ReadinessHardStopError(AppError):
     code = "READINESS_HARD_STOP"
-    status_code = 422
+    status_code = 409
 
     def __init__(self, failed_keys: list[str]) -> None:
         super().__init__(

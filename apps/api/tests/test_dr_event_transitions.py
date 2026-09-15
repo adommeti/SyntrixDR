@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.clock import Clock, FakeClock
 from app.core.database import get_request_session
 from app.core.errors import AppError, app_error_handler
+from app.dr_events.queries import list_descendant_dr_applications, list_descendant_event_ids
 from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.dependencies import get_clock, get_session_store
 from app.identity_auth.session_store import RedisSessionStore
@@ -624,6 +625,80 @@ async def test_close_succeeds_when_children_terminal_or_absent(
 
 
 @pytest.mark.asyncio
+async def test_list_descendant_dr_applications_aggregates_multi_level_tree(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """D-219: "parent aggregates all descendant DR Applications" -- proves the aggregation query
+    stub walks the whole tree (parent -> child -> grandchild), not just direct children, and
+    excludes an unrelated sibling tree's Applications."""
+    admin_id = await _create_entra_admin(session)
+    app_a = await _create_application(session, name="Parent App")
+    app_b = await _create_application(session, name="Child App")
+    app_c = await _create_application(session, name="Grandchild App")
+    app_d = await _create_application(session, name="Unrelated App")
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        parent = await _create_event(client, session_id, csrf_token, name="Parent", application_ids=[app_a])
+        parent_id = parent.json()["id"]
+        child = await _create_event(client, session_id, csrf_token, name="Child", application_ids=[app_b])
+        child_id = child.json()["id"]
+        grandchild = await _create_event(
+            client, session_id, csrf_token, name="Grandchild", application_ids=[app_c]
+        )
+        grandchild_id = grandchild.json()["id"]
+        unrelated = await _create_event(
+            client, session_id, csrf_token, name="Unrelated", application_ids=[app_d]
+        )
+        unrelated_id = unrelated.json()["id"]
+
+    await session.execute(
+        text("UPDATE dr_events SET parent_dr_event_id = :pid WHERE id = :cid"),
+        {"pid": parent_id, "cid": child_id},
+    )
+    await session.execute(
+        text("UPDATE dr_events SET parent_dr_event_id = :pid WHERE id = :cid"),
+        {"pid": child_id, "cid": grandchild_id},
+    )
+    await session.flush()
+
+    descendant_ids = await list_descendant_event_ids(session, uuid.UUID(parent_id))
+    assert set(descendant_ids) == {uuid.UUID(parent_id), uuid.UUID(child_id), uuid.UUID(grandchild_id)}
+    assert uuid.UUID(unrelated_id) not in descendant_ids
+
+    descendant_apps = await list_descendant_dr_applications(session, uuid.UUID(parent_id))
+    assert {a.application_id for a in descendant_apps} == {app_a, app_b, app_c}
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_list_descendant_event_ids_terminates_on_a_forced_cycle(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """The command layer never lets `parent_dr_event_id` form a cycle (only set once, at create,
+    against an already-existing parent), so this can't happen through the app -- but
+    `list_descendant_event_ids`'s BFS should still terminate and return the finite reachable set
+    if one were ever forced directly in the database, rather than looping forever."""
+    admin_id = await _create_entra_admin(session)
+    event_a = await _create_event_row(session, actor_id=admin_id, status="PLANNED", name="Cycle A")
+    event_b = await _create_event_row(session, actor_id=admin_id, status="PLANNED", name="Cycle B")
+
+    await session.execute(
+        text("UPDATE dr_events SET parent_dr_event_id = :pid WHERE id = :cid"),
+        {"pid": event_a, "cid": event_b},
+    )
+    await session.execute(
+        text("UPDATE dr_events SET parent_dr_event_id = :pid WHERE id = :cid"),
+        {"pid": event_b, "cid": event_a},
+    )
+    await session.flush()
+
+    descendant_ids = await list_descendant_event_ids(session, event_a)
+    assert set(descendant_ids) == {event_a, event_b}
+
+
+@pytest.mark.asyncio
 async def test_cancel_requires_reason(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> None:
     admin_id = await _create_entra_admin(session)
     app = _build_app(session, redis_client, clock)
@@ -1104,7 +1179,7 @@ async def test_activate_blocked_by_readiness_hard_stop_without_override(
             json={"expected_version": 1},
         )
 
-    assert response.status_code == 422
+    assert response.status_code == 409
     assert response.json()["error"]["code"] == "READINESS_HARD_STOP"
     failed_keys = set(response.json()["error"]["details"]["failed_keys"])
     assert failed_keys == {
@@ -1245,7 +1320,7 @@ async def test_activate_zero_apps_with_application_in_scope_downgraded_still_blo
             json={"expected_version": 1},
         )
 
-    assert response.status_code == 422
+    assert response.status_code == 409
     failed_keys = set(response.json()["error"]["details"]["failed_keys"])
     assert failed_keys == {
         "readiness.coordinator_assigned",
