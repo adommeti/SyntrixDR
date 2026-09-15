@@ -11,6 +11,7 @@ from app.dr_events.commands import DrEventNotFoundError, create_event
 from app.dr_events.models import DrEvent
 from app.dr_events.queries import get_visible_event, list_visible_events
 from app.dr_events.schemas import (
+    ActivateEventRequest,
     CancelEventRequest,
     CreateDrEventRequest,
     DrEventListResponse,
@@ -122,7 +123,7 @@ async def _run_transition(
 async def post_activate_event(
     event_id: uuid.UUID,
     request: Request,
-    body: ExpectedVersionRequest,
+    body: ActivateEventRequest,
     session: DbSession,
     session_data: CurrentSession,
     clock: ClockDep,
@@ -137,6 +138,7 @@ async def post_activate_event(
             actor_id=session_data.user_id,
             event_id=event_id,
             expected_version=body.expected_version,
+            override_reason=body.override_reason,
             clock=clock,
         ),
     )

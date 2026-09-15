@@ -71,6 +71,12 @@ async def create_event(
     if parent_dr_event_id is not None and await session.get(DrEvent, parent_dr_event_id) is None:
         raise DrEventNotFoundError()
 
+    # `coordinator_user_id` is left NULL on create: no D-record, RBAC_MATRIX row, or API_CONTRACT
+    # endpoint assigns a coordinator at create time, and inventing that semantic here would resolve
+    # an undecided product question in code (CLAUDE.md: "code never resolves one"). D-224's
+    # `readiness.coordinator_assigned` HARD_STOP therefore blocks every `activate` call until a
+    # future increment adds an explicit assign-coordinator command; until then, activation requires
+    # an `override_reason` (session-b scope note, spec-auditor finding 2 on the first draft).
     event = DrEvent(
         name=name,
         event_type=event_type,

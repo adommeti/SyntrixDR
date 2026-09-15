@@ -614,6 +614,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivateEventRequest */
+        ActivateEventRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Override Reason */
+            override_reason?: string | null;
+        };
         /** ApplicationHistoryResponse */
         ApplicationHistoryResponse: {
             /**
@@ -1929,7 +1936,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ExpectedVersionRequest"];
+                "application/json": components["schemas"]["ActivateEventRequest"];
             };
         };
         responses: {

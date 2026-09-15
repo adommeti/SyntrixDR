@@ -59,6 +59,13 @@ class ExpectedVersionRequest(BaseModel):
     expected_version: int
 
 
+class ActivateEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: int
+    override_reason: str | None = None
+
+
 class StartFailoverRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

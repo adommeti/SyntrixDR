@@ -25,6 +25,7 @@ from app.core.errors import AppError, app_error_handler
 from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.dependencies import get_clock, get_session_store
 from app.identity_auth.session_store import RedisSessionStore
+from app.policies_admin.commands import set_policy_value
 from app.users_teams_org.models import RoleAssignment
 
 pytestmark = [pytest.mark.api, pytest.mark.transitions]
@@ -295,7 +296,7 @@ async def test_full_legal_path_planned_to_closed(
             f"/api/v1/dr-events/{event_id}/activate",
             cookies={"drcc_session": session_id},
             headers=_idem_headers(csrf_token),
-            json={"expected_version": 1},
+            json={"expected_version": 1, "override_reason": "no owner/RPO data seeded in this test"},
         )
         assert activate.status_code == 200
         assert activate.json()["status"] == "ACTIVE"
@@ -379,7 +380,7 @@ async def test_start_failover_snapshots_baseline_and_moves_applications_to_recov
             f"/api/v1/dr-events/{event_id}/activate",
             cookies={"drcc_session": session_id},
             headers=_idem_headers(csrf_token),
-            json={"expected_version": 1},
+            json={"expected_version": 1, "override_reason": "no owner/RPO data seeded in this test"},
         )
         failover = await client.post(
             f"/api/v1/dr-events/{event_id}/start-failover",
@@ -423,7 +424,7 @@ async def test_start_failover_rejects_network_cut_at_before_activation(
             f"/api/v1/dr-events/{event_id}/activate",
             cookies={"drcc_session": session_id},
             headers=_idem_headers(csrf_token),
-            json={"expected_version": 1},
+            json={"expected_version": 1, "override_reason": "no Applications scoped in this test"},
         )
         activated_at = clock.now()
         clock.advance(minutes=10)
@@ -457,7 +458,7 @@ async def test_start_failover_rejects_network_cut_at_in_the_future(
             f"/api/v1/dr-events/{event_id}/activate",
             cookies={"drcc_session": session_id},
             headers=_idem_headers(csrf_token),
-            json={"expected_version": 1},
+            json={"expected_version": 1, "override_reason": "no Applications scoped in this test"},
         )
         too_late = (clock.now() + timedelta(minutes=5)).isoformat()
 
@@ -489,7 +490,7 @@ async def test_start_failover_defaults_network_cut_at_to_now(
             f"/api/v1/dr-events/{event_id}/activate",
             cookies={"drcc_session": session_id},
             headers=_idem_headers(csrf_token),
-            json={"expected_version": 1},
+            json={"expected_version": 1, "override_reason": "no Applications scoped in this test"},
         )
         clock.advance(minutes=3)
         expected_now = clock.now()
@@ -743,7 +744,7 @@ async def test_stale_version_returns_409(
             f"/api/v1/dr-events/{event_id}/activate",
             cookies={"drcc_session": session_id},
             headers=_idem_headers(csrf_token),
-            json={"expected_version": 1},
+            json={"expected_version": 1, "override_reason": "no Applications scoped in this test"},
         )
         assert first.status_code == 200
 
@@ -797,7 +798,7 @@ async def test_every_transition_writes_audit_and_outbox_in_same_transaction(
             f"/api/v1/dr-events/{event_id}/activate",
             cookies={"drcc_session": session_id},
             headers=_idem_headers(csrf_token),
-            json={"expected_version": 1},
+            json={"expected_version": 1, "override_reason": "no Applications scoped in this test"},
         )
         assert response.status_code == 200
 
@@ -836,17 +837,21 @@ async def test_activate_replay_returns_the_same_response_without_a_second_audit_
         created = await _create_event(client, session_id, csrf_token, name="Replay Event")
         event_id = created.json()["id"]
 
+        activate_body = {
+            "expected_version": 1,
+            "override_reason": "no Applications scoped in this test",
+        }
         first = await client.post(
             f"/api/v1/dr-events/{event_id}/activate",
             cookies={"drcc_session": session_id},
             headers=idem_headers,
-            json={"expected_version": 1},
+            json=activate_body,
         )
         replay = await client.post(
             f"/api/v1/dr-events/{event_id}/activate",
             cookies={"drcc_session": session_id},
             headers=idem_headers,
-            json={"expected_version": 1},
+            json=activate_body,
         )
 
     assert first.status_code == 200
@@ -1056,3 +1061,265 @@ async def test_app_owner_can_see_own_created_event_and_business_owner_is_also_en
     assert business_detail.status_code == 200
     await redis_client.delete(f"drcc:session:{owner_session_id}")
     await redis_client.delete(f"drcc:session:{business_session_id}")
+
+
+async def _grant_primary_system_owner(
+    session: AsyncSession, *, app_id: uuid.UUID, user_id: uuid.UUID
+) -> None:
+    await session.execute(
+        text(
+            "INSERT INTO application_owners "
+            "(id, application_id, owner_type, owner_order, user_id, created_at, updated_at) "
+            "VALUES (:id, :aid, 'SYSTEM_APPLICATION', 1, :uid, now(), now())"
+        ),
+        {"id": uuid.uuid4(), "aid": app_id, "uid": user_id},
+    )
+    await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_activate_blocked_by_readiness_hard_stop_without_override(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """D-224: an Event scoped to an Application with no Primary System Owner and no RPO
+    target/N-A must be blocked from activating -- `readiness.application_in_scope` is satisfied
+    (Application scoped), but `coordinator_user_id` is never auto-assigned on create (no D-record
+    authorizes that; spec-auditor finding on the first draft), so `readiness.coordinator_assigned`
+    fails alongside the owner/RPO gaps."""
+    admin_id = await _create_entra_admin(session)
+    app_id = await _create_application(session, name="Readiness Gap App")
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        created = await _create_event(
+            client, session_id, csrf_token, name="Not Ready Event", application_ids=[app_id]
+        )
+        event_id = created.json()["id"]
+
+        response = await client.post(
+            f"/api/v1/dr-events/{event_id}/activate",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"expected_version": 1},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "READINESS_HARD_STOP"
+    failed_keys = set(response.json()["error"]["details"]["failed_keys"])
+    assert failed_keys == {
+        "readiness.coordinator_assigned",
+        "readiness.primary_system_owner",
+        "readiness.rpo_target_or_na",
+    }
+
+    event_row = await session.execute(text("SELECT status FROM dr_events WHERE id = :eid"), {"eid": event_id})
+    assert event_row.scalar_one() == "PLANNED"
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_activate_with_override_reason_records_overrides_and_succeeds(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    admin_id = await _create_entra_admin(session)
+    app_id = await _create_application(session, name="Overridden App")
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        created = await _create_event(
+            client, session_id, csrf_token, name="Override Event", application_ids=[app_id]
+        )
+        event_id = created.json()["id"]
+
+        response = await client.post(
+            f"/api/v1/dr-events/{event_id}/activate",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"expected_version": 1, "override_reason": "accepted risk, will fix post-activation"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ACTIVE"
+
+    override_rows = await session.execute(
+        text(
+            "SELECT policy_key, reason, override_type FROM overrides "
+            "WHERE dr_event_id = :eid ORDER BY policy_key"
+        ),
+        {"eid": event_id},
+    )
+    rows = override_rows.all()
+    assert {r.policy_key for r in rows} == {
+        "readiness.coordinator_assigned",
+        "readiness.primary_system_owner",
+        "readiness.rpo_target_or_na",
+    }
+    assert all(r.reason == "accepted risk, will fix post-activation" for r in rows)
+    assert all(r.override_type == "READINESS_OVERRIDE" for r in rows)
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_activate_succeeds_without_override_when_readiness_satisfied(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    admin_id = await _create_entra_admin(session)
+    owner_id = await _create_user(session, display_name="Ready App Owner")
+    app_id = await _create_application(session, name="Fully Ready App")
+    await _grant_primary_system_owner(session, app_id=app_id, user_id=owner_id)
+
+    fastapi_app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(fastapi_app) as client:
+        created = await _create_event(
+            client, session_id, csrf_token, name="Ready Event", application_ids=[app_id]
+        )
+        event_id = created.json()["id"]
+
+    # readiness.rpo_target_or_na needs an explicit target or N/A flag -- set N/A directly (no
+    # RPO-setting command exists yet, that's rto_rpo_health's scope, a later increment).
+    # readiness.coordinator_assigned needs coordinator_user_id set -- no assign-coordinator command
+    # exists yet either, so set it directly to prove the satisfied-readiness path end to end.
+    await session.execute(
+        text("UPDATE dr_applications SET rpo_not_applicable = TRUE WHERE dr_event_id = :eid"),
+        {"eid": event_id},
+    )
+    await session.execute(
+        text("UPDATE dr_events SET coordinator_user_id = :uid WHERE id = :eid"),
+        {"uid": admin_id, "eid": event_id},
+    )
+    await session.flush()
+
+    async with await _client(fastapi_app) as client:
+        response = await client.post(
+            f"/api/v1/dr-events/{event_id}/activate",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"expected_version": 1},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ACTIVE"
+
+    override_count = await session.execute(
+        text("SELECT COUNT(*) AS cnt FROM overrides WHERE dr_event_id = :eid"), {"eid": event_id}
+    )
+    assert override_count.one().cnt == 0
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_activate_zero_apps_with_application_in_scope_downgraded_still_blocks(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """D-224 regression: `readiness.application_in_scope` is not a locked policy key, so a
+    Coordinator can downgrade it to WARNING at Event scope. An Event with zero in-scope
+    Applications must still be blocked on `readiness.primary_system_owner`/`.rpo_target_or_na`
+    (not vacuously satisfied) even when `application_in_scope` itself no longer blocks -- proves
+    the fix for the vacuous-truth gap the reviewer found in readiness_service.py."""
+    admin_id = await _create_entra_admin(session)
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        created = await _create_event(client, session_id, csrf_token, name="No Apps Event")
+        event_id = created.json()["id"]
+
+        await set_policy_value(
+            session,
+            actor_id=admin_id,
+            key="readiness.application_in_scope",
+            value="WARNING",
+            scope_type="DR_EVENT",
+            scope_id=uuid.UUID(event_id),
+            clock=clock,
+        )
+
+        response = await client.post(
+            f"/api/v1/dr-events/{event_id}/activate",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"expected_version": 1},
+        )
+
+    assert response.status_code == 422
+    failed_keys = set(response.json()["error"]["details"]["failed_keys"])
+    assert failed_keys == {
+        "readiness.coordinator_assigned",
+        "readiness.primary_system_owner",
+        "readiness.rpo_target_or_na",
+    }
+    assert "readiness.application_in_scope" not in failed_keys
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_activate_succeeds_with_warning_only_failure_and_no_override(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """D-224: a WARNING-severity failure never blocks `activate` and never needs an
+    `override_reason` -- only unmet HARD_STOP keys do. Missing Primary Business Owner is
+    downgraded to WARNING at Event scope; the Event otherwise satisfies every HARD_STOP key."""
+    admin_id = await _create_entra_admin(session)
+    owner_id = await _create_user(session, display_name="System Owner Only")
+    app_id = await _create_application(session, name="Business-Owner-Missing App")
+    await _grant_primary_system_owner(session, app_id=app_id, user_id=owner_id)
+
+    fastapi_app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(fastapi_app) as client:
+        created = await _create_event(
+            client, session_id, csrf_token, name="Warning Only Event", application_ids=[app_id]
+        )
+        event_id = created.json()["id"]
+
+        await set_policy_value(
+            session,
+            actor_id=admin_id,
+            key="readiness.primary_business_owner",
+            value="WARNING",
+            scope_type="DR_EVENT",
+            scope_id=uuid.UUID(event_id),
+            clock=clock,
+        )
+
+    await session.execute(
+        text("UPDATE dr_applications SET rpo_not_applicable = TRUE WHERE dr_event_id = :eid"),
+        {"eid": event_id},
+    )
+    await session.execute(
+        text("UPDATE dr_events SET coordinator_user_id = :uid WHERE id = :eid"),
+        {"uid": admin_id, "eid": event_id},
+    )
+    await session.flush()
+
+    async with await _client(fastapi_app) as client:
+        response = await client.post(
+            f"/api/v1/dr-events/{event_id}/activate",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"expected_version": 1},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ACTIVE"
+
+    override_count = await session.execute(
+        text("SELECT COUNT(*) AS cnt FROM overrides WHERE dr_event_id = :eid"), {"eid": event_id}
+    )
+    assert override_count.one().cnt == 0
+
+    audit_row = await session.execute(
+        text(
+            "SELECT after_data FROM audit_events WHERE entity_id = :eid AND action = 'DR_EVENT_ACTIVATED' "
+            "ORDER BY occurred_at DESC LIMIT 1"
+        ),
+        {"eid": event_id},
+    )
+    after = audit_row.one().after_data
+    assert after["readiness_warnings"] == ["readiness.primary_business_owner"]
+    await redis_client.delete(f"drcc:session:{session_id}")

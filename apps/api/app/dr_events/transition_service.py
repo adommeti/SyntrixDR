@@ -12,10 +12,23 @@ from app.core.clock import Clock, SystemClock
 from app.core.errors import AppError, ConcurrencyConflictError
 from app.core.outbox import write_outbox
 from app.dr_events.commands import DrEventNotFoundError
-from app.dr_events.models import DrApplication, DrEvent
+from app.dr_events.models import DrApplication, DrEvent, Override
 from app.dr_events.queries import has_non_terminal_children
+from app.dr_events.readiness_service import evaluate_readiness
 from app.plans_import.commands import capture_baseline_snapshot
 from app.users_teams_org.authorization import AuthorizationService, Capability
+
+
+class ReadinessHardStopError(AppError):
+    code = "READINESS_HARD_STOP"
+    status_code = 422
+
+    def __init__(self, failed_keys: list[str]) -> None:
+        super().__init__(
+            "Readiness check(s) failed and no override_reason was supplied.",
+            details={"failed_keys": failed_keys},
+        )
+
 
 #: STATE_MACHINES.md §DR Event. CANCELLED is reachable from any non-terminal state (handled
 #: separately in `cancel`, not folded into this table, since it's a blanket rule not a per-row one).
@@ -131,14 +144,50 @@ class DrEventTransitionService:
         actor_id: uuid.UUID,
         event_id: uuid.UUID,
         expected_version: int,
+        override_reason: str | None = None,
         clock: Clock | None = None,
     ) -> DrEvent:
+        """D-224: evaluates `readiness_service.EVALUATED_KEYS` (the 6 of 13 catalog items
+        computable with entities that exist today — see BUILD-04.plan.md session-b scope for the
+        other 7). An unsatisfied HARD_STOP-severity key blocks activation unless `override_reason`
+        is supplied, in which case one audited `overrides` row is written per failed key
+        ("Coordinator override... always with reason") — no extra capability check, since
+        `EVENT_LIFECYCLE_COMMAND` (required below) is already exactly Admin/Coordinator.
+        WARNING-severity failures never block; both are recorded in this transition's audit
+        metadata. An OFF-severity key is skipped for this call."""
         clock = clock or SystemClock()
         event = await _load_for_update(session, event_id)
         await AuthorizationService.require(session, actor_id, Capability.EVENT_LIFECYCLE_COMMAND)
         if event.version != expected_version:
             raise ConcurrencyConflictError()
         _assert_legal(event.status, "ACTIVE")
+
+        readiness_results = await evaluate_readiness(session, event)
+        hard_stop_failures = [r for r in readiness_results if r.severity == "HARD_STOP" and not r.satisfied]
+        warning_failures = [r for r in readiness_results if r.severity == "WARNING" and not r.satisfied]
+        if hard_stop_failures:
+            if not override_reason or not override_reason.strip():
+                raise ReadinessHardStopError([r.key for r in hard_stop_failures])
+            for result in hard_stop_failures:
+                override = Override(
+                    dr_event_id=event.id,
+                    target_type="DR_EVENT",
+                    target_id=event.id,
+                    override_type="READINESS_OVERRIDE",
+                    policy_key=result.key,
+                    reason=override_reason,
+                    performed_by_user_id=actor_id,
+                )
+                session.add(override)
+                await session.flush()
+                await write_audit(
+                    session,
+                    actor_user_id=actor_id,
+                    entity_type="DR_EVENT",
+                    entity_id=event.id,
+                    action="READINESS_OVERRIDE_RECORDED",
+                    after={"policy_key": result.key, "reason": override_reason},
+                )
 
         before = {"status": event.status, "version": event.version}
         event.status = "ACTIVE"
@@ -150,6 +199,10 @@ class DrEventTransitionService:
             new_status="ACTIVE",
             action="DR_EVENT_ACTIVATED",
             clock=clock,
+            extra_after={
+                "readiness_hard_stop_overridden": [r.key for r in hard_stop_failures],
+                "readiness_warnings": [r.key for r in warning_failures],
+            },
         )
 
     @staticmethod

@@ -1,6 +1,31 @@
 {
   "components": {
     "schemas": {
+      "ActivateEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ActivateEventRequest",
+        "type": "object"
+      },
       "ApplicationHistoryResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2754,7 +2779,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ExpectedVersionRequest"
+                "$ref": "#/components/schemas/ActivateEventRequest"
               }
             }
           },

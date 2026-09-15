@@ -31,6 +31,23 @@ async def list_application_owners(session: AsyncSession, application_id: uuid.UU
     return list(result.scalars().all())
 
 
+async def list_application_ids_with_primary_owner(
+    session: AsyncSession, application_ids: list[uuid.UUID], owner_type: str
+) -> set[uuid.UUID]:
+    """Application ids (subset of `application_ids`) that have an owner_order=1 owner of `owner_type`."""
+    if not application_ids:
+        return set()
+    result = await session.execute(
+        select(ApplicationOwner.application_id).where(
+            ApplicationOwner.application_id.in_(application_ids),
+            ApplicationOwner.owner_type == owner_type,
+            ApplicationOwner.owner_order == 1,
+            ApplicationOwner.deleted_at.is_(None),
+        )
+    )
+    return set(result.scalars().all())
+
+
 async def list_tiers(session: AsyncSession) -> list[Tier]:
     result = await session.execute(select(Tier).order_by(Tier.rank))
     return list(result.scalars().all())
