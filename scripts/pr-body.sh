@@ -7,7 +7,12 @@ NN="$(printf '%02d' "$((10#${1:?NN}))")"
 plan="docs/plan/increments/BUILD-${NN}.plan.md"
 prompt="$(ls docs/build-prompts/BUILD-${NN}-*.md | head -n1)"
 [ -f "$plan" ] || { echo "missing $plan" >&2; exit 1; }
-section() { awk -v h="## $1" 'BEGIN{p=0} $0==h{p=1;next} /^## /{if(p){exit}} p' "$plan"; }
+# Multi-session increments append a new "## Evidence table"/"## Review verdicts" per review
+# round, sometimes with a parenthetical suffix (e.g. "## Evidence table (final)") -- match by
+# prefix and take the LAST occurrence (the final, consolidated one), not the first stale one.
+section() {
+  awk -v h="## $1" 'index($0,h)==1{c=1;buf="";next} /^## /{c=0} c{buf=buf $0 "\n"} END{printf "%s", buf}' "$plan"
+}
 title="$(grep -m1 -E '^\*\*Goal:\*\*' "$prompt" | sed -E 's/^\*\*Goal:\*\* *//')"
 cat <<EOF
 ## BUILD-${NN}: ${title}
