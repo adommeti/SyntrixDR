@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 from redis.asyncio import Redis
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.clock import Clock, FakeClock
 from app.core.database import get_request_session
@@ -287,3 +287,81 @@ async def test_instantiate_does_not_mutate_the_source_plan_version_rows(
     ).all()
     assert len(source_rows) == 1
     assert source_rows[0].snapshot_data == {"name": "Original"}
+
+
+@pytest.mark.asyncio
+async def test_create_plan_version_serializes_concurrent_requests_for_the_same_plan(
+    engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two concurrent `create_plan_version` calls for the same Plan (different Idempotency-Keys,
+    modelled here as two independent DB sessions on separate connections) must not both read the
+    same `MAX(version_number)` and race to insert the same next number -- the unique
+    `(plan_id, version_number)` index would otherwise surface as an unhandled IntegrityError for
+    one of them (found in review). Uses real, separate Postgres connections rather than the
+    shared `session` fixture, whose single connection/transaction can't model genuine concurrency.
+    Patches `next_plan_version_number` to pause briefly so both calls are deterministically inside
+    the race window at the same time, rather than relying on incidental asyncio scheduling luck
+    (confirmed unreliable: the unpatched version of this test passed 13/13 runs against the
+    pre-fix code, since one coroutine's several fast local-DB round trips usually finished before
+    the other was scheduled at all). With the row lock in place, the second call can't even reach
+    the patched pause until the first commits, so it correctly sees the new max. Setup/cleanup
+    commit for real (unlike every other test in this file) since two independent connections need
+    to see the same committed Plan row."""
+    import asyncio
+
+    from app.plans_import import commands as plans_import_commands
+
+    session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+    admin_id = uuid.uuid4()
+    plan_id = uuid.uuid4()
+
+    async with session_factory() as setup_session:
+        await setup_session.execute(
+            text(
+                "INSERT INTO users (id, identity_type, display_name, email, entra_object_id) "
+                "VALUES (:id, 'ENTRA', 'Race Admin', :email, :oid)"
+            ),
+            {"id": admin_id, "email": f"{admin_id}@example.test", "oid": str(uuid.uuid4())},
+        )
+        setup_session.add(RoleAssignment(user_id=admin_id, role_key="GLOBAL_ADMIN", scope_type="GLOBAL"))
+        await setup_session.execute(
+            text(
+                "INSERT INTO plans (id, name, plan_type, created_by_user_id) "
+                "VALUES (:id, 'Race Plan', 'FAILOVER', :creator)"
+            ),
+            {"id": plan_id, "creator": admin_id},
+        )
+        await setup_session.commit()
+
+    original_next_number = plans_import_commands.next_plan_version_number
+
+    async def _paused_next_plan_version_number(session: AsyncSession, pid: uuid.UUID) -> int:
+        result = await original_next_number(session, pid)
+        await asyncio.sleep(0.2)
+        return result
+
+    monkeypatch.setattr(plans_import_commands, "next_plan_version_number", _paused_next_plan_version_number)
+
+    try:
+
+        async def _create_version() -> int:
+            async with session_factory() as sess:
+                version = await plans_import_commands.create_plan_version(
+                    sess, actor_id=admin_id, plan_id=plan_id, version_type="DRAFT"
+                )
+                await sess.commit()
+                return version.version_number
+
+        results = await asyncio.gather(_create_version(), _create_version())
+        assert sorted(results) == [1, 2]
+    finally:
+        async with session_factory() as cleanup_session:
+            await cleanup_session.execute(
+                text("DELETE FROM plan_versions WHERE plan_id = :pid"), {"pid": plan_id}
+            )
+            await cleanup_session.execute(text("DELETE FROM plans WHERE id = :pid"), {"pid": plan_id})
+            await cleanup_session.execute(
+                text("DELETE FROM role_assignments WHERE user_id = :uid"), {"uid": admin_id}
+            )
+            await cleanup_session.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": admin_id})
+            await cleanup_session.commit()

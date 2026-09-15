@@ -76,6 +76,22 @@ class ClosureBlockedByNonTerminalChildError(AppError):
         super().__init__("Cannot close: a child DR Event is not yet CLOSED or CANCELLED (D-219).")
 
 
+class FailbackRequiredBeforeCloseError(AppError):
+    """CLAUDE.md:43: "`FAILED_OVER → CLOSED` only when failback not required." Reuses the
+    `CLOSURE_HARD_STOP` code (API_CONTRACT.md:52, "Closure guard failed on close") -- that row's
+    listed cases (child Event, monitoring Tasks) aren't exhaustive by its own wording, and no
+    dedicated code exists for this specific guard."""
+
+    code = "CLOSURE_HARD_STOP"
+    status_code = 409
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Cannot close directly from FAILED_OVER: at least one in-scope DR Application still "
+            "requires failback (failback_required=true). Start failback first."
+        )
+
+
 async def _load_for_update(session: AsyncSession, event_id: uuid.UUID) -> DrEvent:
     event = await session.get(DrEvent, event_id, with_for_update=True)
     if event is None:
@@ -380,7 +396,8 @@ class DrEventTransitionService:
         """D-219 child guard is enforced (only needs `parent_dr_event_id`, already in scope).
         D-227's monitoring-Task guard is deferred (BUILD-04.plan.md Risk #3): work_streams/
         tasks_dependencies don't exist yet, so there can never be a non-terminal monitoring Task
-        to find -- an honestly-vacuous guard, not a silently-skipped one."""
+        to find -- an honestly-vacuous guard, not a silently-skipped one. CLAUDE.md:43's
+        "FAILED_OVER -> CLOSED only when failback not required" is enforced below."""
         clock = clock or SystemClock()
         event = await _load_for_update(session, event_id)
         await AuthorizationService.require(session, actor_id, Capability.EVENT_LIFECYCLE_COMMAND)
@@ -390,6 +407,17 @@ class DrEventTransitionService:
 
         if await has_non_terminal_children(session, event.id):
             raise ClosureBlockedByNonTerminalChildError()
+
+        if event.status == "FAILED_OVER":
+            failback_pending = await session.execute(
+                select(DrApplication.id).where(
+                    DrApplication.dr_event_id == event.id,
+                    DrApplication.failback_required.is_(True),
+                    DrApplication.deleted_at.is_(None),
+                )
+            )
+            if failback_pending.first() is not None:
+                raise FailbackRequiredBeforeCloseError()
 
         before = {"status": event.status, "version": event.version}
         event.status = "CLOSED"

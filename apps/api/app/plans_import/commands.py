@@ -103,7 +103,12 @@ async def create_plan_version(
     if version_type not in _CALLER_ALLOWED_VERSION_TYPES:
         raise PlanVersionBaselineNotAllowedError()
 
-    plan = await session.get(Plan, plan_id)
+    # Locks the Plan row for the rest of this transaction so two concurrent requests (different
+    # Idempotency-Keys) can't both read the same MAX(version_number) and race to insert the same
+    # next number -- the second blocks here until the first commits, then sees the new max
+    # (found in review; `ux_plan_versions_plan_version` would otherwise surface as an unhandled
+    # integrity error instead of a clean outcome).
+    plan = await session.get(Plan, plan_id, with_for_update=True)
     if plan is None:
         raise PlanNotFoundError()
 

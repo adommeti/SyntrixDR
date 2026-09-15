@@ -293,6 +293,15 @@ async def test_full_legal_path_planned_to_closed(
         )
         event_id = created.json()["id"]
 
+    # This test exercises the direct FAILED_OVER -> CLOSED edge, legal only when failback isn't
+    # required (CLAUDE.md:43); `failback_required` defaults true, so it must be turned off here.
+    await session.execute(
+        text("UPDATE dr_applications SET failback_required = FALSE WHERE dr_event_id = :eid"),
+        {"eid": event_id},
+    )
+    await session.flush()
+
+    async with await _client(app) as client:
         activate = await client.post(
             f"/api/v1/dr-events/{event_id}/activate",
             cookies={"drcc_session": session_id},
@@ -476,6 +485,42 @@ async def test_start_failover_rejects_network_cut_at_in_the_future(
 
 
 @pytest.mark.asyncio
+async def test_start_failover_rejects_timezone_naive_network_cut_at(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """A timezone-naive `network_cut_at` (e.g. `2026-09-15T12:00:00`, no UTC offset) must be
+    rejected as a clean validation error, not crash the D-237 bounds check with a `TypeError`
+    from comparing a naive value against the tz-aware `activated_at`/clock `now()`."""
+    admin_id = await _create_entra_admin(session)
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        created = await _create_event(client, session_id, csrf_token, name="Naive Cut Event")
+        event_id = created.json()["id"]
+
+        await client.post(
+            f"/api/v1/dr-events/{event_id}/activate",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"expected_version": 1, "override_reason": "no Applications scoped in this test"},
+        )
+
+        response = await client.post(
+            f"/api/v1/dr-events/{event_id}/start-failover",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"expected_version": 2, "network_cut_at": "2026-09-15T12:00:00"},
+        )
+
+    assert response.status_code == 422
+
+    event_row = await session.execute(text("SELECT status FROM dr_events WHERE id = :eid"), {"eid": event_id})
+    assert event_row.scalar_one() == "ACTIVE"
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
 async def test_start_failover_defaults_network_cut_at_to_now(
     session: AsyncSession, redis_client: Redis, clock: FakeClock
 ) -> None:
@@ -621,6 +666,128 @@ async def test_close_succeeds_when_children_terminal_or_absent(
 
     assert response.status_code == 200
     assert response.json()["status"] == "CLOSED"
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_close_blocked_from_failed_over_when_failback_still_required(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """CLAUDE.md:43: "FAILED_OVER -> CLOSED only when failback not required." Direct closure
+    must be blocked while any in-scope DR Application still has `failback_required=true`, even
+    though the state table alone treats FAILED_OVER -> CLOSED as a legal edge."""
+    admin_id = await _create_entra_admin(session)
+    event_id = await _create_event_row(session, actor_id=admin_id, status="FAILED_OVER", version=1)
+    application_id = await _create_application(session, name="Needs Failback App")
+    tier_row = await session.execute(text("SELECT id FROM tiers WHERE code = 'TIER_2'"))
+    tier_id = tier_row.scalar_one()
+    await session.execute(
+        text(
+            "INSERT INTO dr_applications "
+            "(id, dr_event_id, application_id, effective_tier_id, effective_sla_minutes, "
+            "rto_target_minutes, failback_required, status, version, created_at, updated_at) "
+            "VALUES (:id, :eid, :aid, :tid, 120, 120, TRUE, 'FAILED_OVER', 1, now(), now())"
+        ),
+        {"id": uuid.uuid4(), "eid": event_id, "aid": application_id, "tid": tier_id},
+    )
+    await session.flush()
+
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        response = await client.post(
+            f"/api/v1/dr-events/{event_id}/close",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"expected_version": 1},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "CLOSURE_HARD_STOP"
+
+    event_row = await session.execute(text("SELECT status FROM dr_events WHERE id = :eid"), {"eid": event_id})
+    assert event_row.scalar_one() == "FAILED_OVER"
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_close_from_failed_over_succeeds_when_failback_not_required(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    admin_id = await _create_entra_admin(session)
+    event_id = await _create_event_row(session, actor_id=admin_id, status="FAILED_OVER", version=1)
+    application_id = await _create_application(session, name="No Failback App")
+    tier_row = await session.execute(text("SELECT id FROM tiers WHERE code = 'TIER_2'"))
+    tier_id = tier_row.scalar_one()
+    await session.execute(
+        text(
+            "INSERT INTO dr_applications "
+            "(id, dr_event_id, application_id, effective_tier_id, effective_sla_minutes, "
+            "rto_target_minutes, failback_required, status, version, created_at, updated_at) "
+            "VALUES (:id, :eid, :aid, :tid, 120, 120, FALSE, 'FAILED_OVER', 1, now(), now())"
+        ),
+        {"id": uuid.uuid4(), "eid": event_id, "aid": application_id, "tid": tier_id},
+    )
+    await session.flush()
+
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        response = await client.post(
+            f"/api/v1/dr-events/{event_id}/close",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"expected_version": 1},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "CLOSED"
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_create_event_rejects_parent_id_the_actor_cannot_see(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """An App Owner authorized to create an Event scoped to their own Application must not be
+    able to attach it under an arbitrary existing parent Event they have no visibility into --
+    existence alone isn't authorization (invariant #1). Confirms the parent Event is untouched
+    (no non-terminal child got linked under it, which would otherwise block its own `close`)."""
+    admin_id = await _create_entra_admin(session)
+    foreign_parent_id = await _create_event_row(
+        session, actor_id=admin_id, status="PLANNED", name="Foreign Parent"
+    )
+
+    owner_id = await _create_user(session, display_name="Scoped Owner")
+    owned_app_id = await _create_application(session, name="Owner's App")
+    await _grant_role(session, owner_id, "APP_OWNER", scope_type="APPLICATION", scope_id=owned_app_id)
+
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, owner_id)
+
+    async with await _client(app) as client:
+        response = await client.post(
+            "/api/v1/dr-events",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={
+                "name": "Attempted Child",
+                "event_type": "PLANNED_DR",
+                "application_ids": [str(owned_app_id)],
+                "parent_dr_event_id": str(foreign_parent_id),
+            },
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "DR_EVENT_NOT_FOUND"
+
+    child_count = await session.execute(
+        text("SELECT COUNT(*) AS cnt FROM dr_events WHERE parent_dr_event_id = :pid"),
+        {"pid": foreign_parent_id},
+    )
+    assert child_count.one().cnt == 0
     await redis_client.delete(f"drcc:session:{session_id}")
 
 

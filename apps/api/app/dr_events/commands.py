@@ -11,7 +11,7 @@ from app.core.clock import Clock, SystemClock
 from app.core.errors import AppError
 from app.core.outbox import write_outbox
 from app.dr_events.models import DrApplication, DrEvent
-from app.dr_events.participants import enrol_participant
+from app.dr_events.participants import enrol_participant, user_can_see_event
 from app.plans_import.commands import instantiate_plan_into_event
 from app.users_teams_org.authorization import AuthorizationService, Capability, Scope
 
@@ -68,8 +68,14 @@ async def create_event(
     else:
         await AuthorizationService.require(session, actor_id, Capability.CREATE_PLANNED_DR_EVENT, Scope())
 
-    if parent_dr_event_id is not None and await session.get(DrEvent, parent_dr_event_id) is None:
-        raise DrEventNotFoundError()
+    if parent_dr_event_id is not None:
+        # Existence alone isn't authorization (invariant #1): a foreign parent the actor can't
+        # see must 404, not attach -- otherwise any actor with create rights on their own scope
+        # could link a new child under an Event they have no visibility into, and that child then
+        # blocks the foreign Event's own close via `has_non_terminal_children` (found in review).
+        parent_event = await session.get(DrEvent, parent_dr_event_id)
+        if parent_event is None or not await user_can_see_event(session, actor_id, parent_dr_event_id):
+            raise DrEventNotFoundError()
 
     # `coordinator_user_id` is left NULL on create: no D-record, RBAC_MATRIX row, or API_CONTRACT
     # endpoint assigns a coordinator at create time, and inventing that semantic here would resolve

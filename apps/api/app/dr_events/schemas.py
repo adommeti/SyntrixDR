@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class DrEventResponse(BaseModel):
@@ -71,6 +71,16 @@ class StartFailoverRequest(BaseModel):
 
     expected_version: int
     network_cut_at: datetime | None = None
+
+    @field_validator("network_cut_at")
+    @classmethod
+    def _network_cut_at_must_be_timezone_aware(cls, value: datetime | None) -> datetime | None:
+        # A naive value compared against the tz-aware DB `activated_at`/clock `now()` in D-237's
+        # bounds check raises TypeError (an unhandled 500), not a validation error (found in
+        # review). Reject it here instead, at the request boundary.
+        if value is not None and value.tzinfo is None:
+            raise ValueError("network_cut_at must include a UTC offset (be timezone-aware).")
+        return value
 
 
 class CancelEventRequest(BaseModel):
