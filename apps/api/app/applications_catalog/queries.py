@@ -41,6 +41,10 @@ async def get_tier_by_code(session: AsyncSession, code: str) -> Tier | None:
     return result.scalar_one_or_none()
 
 
+async def get_tier(session: AsyncSession, tier_id: uuid.UUID) -> Tier | None:
+    return await session.get(Tier, tier_id)
+
+
 async def get_application_history(
     session: AsyncSession, application_id: uuid.UUID
 ) -> list[dict[str, object]]:

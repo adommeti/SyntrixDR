@@ -14,9 +14,11 @@ from app.core.config import Settings, get_settings
 from app.core.database import make_engine, make_session_factory
 from app.core.errors import AppError, app_error_handler, unhandled_error_handler
 from app.core.telemetry import configure_telemetry
+from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.oidc import register_entra_oauth
 from app.identity_auth.routes import router as identity_auth_router
 from app.identity_auth.session_store import RedisSessionStore
+from app.plans_import.routes import router as plans_import_router
 from app.policies_admin.routes import router as policies_admin_router
 from app.users_teams_org.routes import router as users_teams_org_router
 
@@ -69,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users_teams_org_router)
     app.include_router(applications_catalog_router)
     app.include_router(policies_admin_router)
+    app.include_router(plans_import_router)
+    app.include_router(dr_events_router)
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:

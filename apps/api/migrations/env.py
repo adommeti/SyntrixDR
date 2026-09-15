@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.database import Base
 from app.core.idempotency import IdempotencyKey
 from app.core.outbox import OutboxEvent
+from app.plans_import.models import PlanVersion
 
 config = context.config
 
@@ -21,7 +22,11 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Referenced only to register their tables on `Base.metadata` before Alembic reads it.
-_MODELED_TABLES = (IdempotencyKey, OutboxEvent)
+# `PlanVersion` specifically: `DrEvent.baseline_plan_version_id` FKs to `plan_versions.id`
+# (schema_v1.sql's deferred `fk_event_baseline` ALTER) and nothing else in this module's own
+# import chain (`core.idempotency`/`core.outbox`) pulls `plans_import.models` in, so running
+# `alembic check` without this explicit import fails to resolve that FK's target table.
+_MODELED_TABLES = (IdempotencyKey, OutboxEvent, PlanVersion)
 
 
 def get_url() -> str:
