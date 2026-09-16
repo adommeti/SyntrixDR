@@ -70,6 +70,10 @@ class Capability(str, Enum):
     #: reading, Admin-only, per the gap-filling convention in ADR-035.
     MANAGE_APPLICATION_CATALOG = "MANAGE_APPLICATION_CATALOG"
     MANAGE_TIERS = "MANAGE_TIERS"
+    #: BUILD-04: RBAC_MATRIX.md has no row for Plan authoring either — gap-filling per ADR-035,
+    #: but Coordinator-inclusive (unlike the two above) since Plans feed directly into
+    #: Coordinator-owned Event lifecycle, mirroring EVENT_LIFECYCLE_COMMAND's ungated grant.
+    MANAGE_PLANS = "MANAGE_PLANS"
 
 
 #: Capabilities `GLOBAL_READONLY` may exercise (read-only; RBAC_MATRIX.md's only read-labeled row).
@@ -205,6 +209,7 @@ GRANTS: dict[Capability, dict[str, bool | str]] = {
     Capability.CREATE_LOCAL_FALLBACK_USER: {"GLOBAL_ADMIN": True},
     Capability.MANAGE_APPLICATION_CATALOG: {"GLOBAL_ADMIN": True},
     Capability.MANAGE_TIERS: {"GLOBAL_ADMIN": True},
+    Capability.MANAGE_PLANS: {"GLOBAL_ADMIN": True, "DR_COORDINATOR": True},
     Capability.AI_ACT: {
         "GLOBAL_ADMIN": True,
         "DR_COORDINATOR": True,

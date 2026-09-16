@@ -13,7 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.clock import Clock
 from app.core.database import Base
-from app.core.external_refs import dr_events_table
+from app.dr_events.models import DrEvent
 
 # Mirrors the `target_type` enum created by 0002_reconciliation; `create_type=False`
 # because the type already exists in the database (migrations rule).
@@ -39,7 +39,7 @@ _TARGET_TYPE = PgEnum(
 )
 
 
-_ = dr_events_table  # registers `dr_events` (FK-resolution stub) on Base.metadata
+_ = DrEvent  # registers `dr_events` (real model now) on Base.metadata
 
 
 class OutboxEvent(Base):

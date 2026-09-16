@@ -336,6 +336,143 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dr-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Events Route */
+        get: operations["list_events_route_api_v1_dr_events_get"];
+        put?: never;
+        /** Post Create Event */
+        post: operations["post_create_event_api_v1_dr_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event Route */
+        get: operations["get_event_route_api_v1_dr_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-events/{event_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Activate Event */
+        post: operations["post_activate_event_api_v1_dr_events__event_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-events/{event_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Cancel Event */
+        post: operations["post_cancel_event_api_v1_dr_events__event_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-events/{event_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Close Event */
+        post: operations["post_close_event_api_v1_dr_events__event_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-events/{event_id}/mark-failed-over": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Mark Failed Over */
+        post: operations["post_mark_failed_over_api_v1_dr_events__event_id__mark_failed_over_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-events/{event_id}/start-failback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Start Failback */
+        post: operations["post_start_failback_api_v1_dr_events__event_id__start_failback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-events/{event_id}/start-failover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Start Failover */
+        post: operations["post_start_failover_api_v1_dr_events__event_id__start_failover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -364,6 +501,58 @@ export interface paths {
         get: operations["get_me_route_api_v1_me_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Plans Route */
+        get: operations["list_plans_route_api_v1_plans_get"];
+        put?: never;
+        /** Post Create Plan */
+        post: operations["post_create_plan_api_v1_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan Route */
+        get: operations["get_plan_route_api_v1_plans__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plans/{plan_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Create Plan Version */
+        post: operations["post_create_plan_version_api_v1_plans__plan_id__versions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -425,6 +614,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivateEventRequest */
+        ActivateEventRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Override Reason */
+            override_reason?: string | null;
+        };
         /** ApplicationHistoryResponse */
         ApplicationHistoryResponse: {
             /**
@@ -492,6 +688,13 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** CancelEventRequest */
+        CancelEventRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Reason */
+            reason: string;
+        };
         /** CreateApplicationRequest */
         CreateApplicationRequest: {
             /** Description */
@@ -508,6 +711,26 @@ export interface components {
              */
             tier_id: string;
         };
+        /** CreateDrEventRequest */
+        CreateDrEventRequest: {
+            /**
+             * Application Ids
+             * @default []
+             */
+            application_ids: string[];
+            /** Description */
+            description?: string | null;
+            /** Event Type */
+            event_type: string;
+            /** Name */
+            name: string;
+            /** Parent Dr Event Id */
+            parent_dr_event_id?: string | null;
+            /** Plan Id */
+            plan_id?: string | null;
+            /** Plan Version Id */
+            plan_version_id?: string | null;
+        };
         /** CreateLocalUserRequest */
         CreateLocalUserRequest: {
             /** Display Name */
@@ -517,10 +740,111 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** CreatePlanRequest */
+        CreatePlanRequest: {
+            /** Application Id */
+            application_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /** Plan Type */
+            plan_type: string;
+        };
+        /** CreatePlanVersionRequest */
+        CreatePlanVersionRequest: {
+            /**
+             * Milestones
+             * @default []
+             */
+            milestones: components["schemas"]["SnapshotItemRequest"][];
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Task Dependencies
+             * @default []
+             */
+            task_dependencies: components["schemas"]["SnapshotItemRequest"][];
+            /**
+             * Tasks
+             * @default []
+             */
+            tasks: components["schemas"]["SnapshotItemRequest"][];
+            /** Version Type */
+            version_type: string;
+        };
         /** CsrfTokenResponse */
         CsrfTokenResponse: {
             /** Csrf Token */
             csrf_token: string;
+        };
+        /** DrEventListResponse */
+        DrEventListResponse: {
+            /** Events */
+            events: components["schemas"]["DrEventResponse"][];
+        };
+        /** DrEventResponse */
+        DrEventResponse: {
+            /** Ai Control Profile */
+            ai_control_profile: string;
+            /** Baseline Plan Version Id */
+            baseline_plan_version_id: string | null;
+            /** Cancel Reason */
+            cancel_reason: string | null;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Coordinator User Id */
+            coordinator_user_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Description */
+            description: string | null;
+            /** Event Timezone */
+            event_timezone: string;
+            /** Event Type */
+            event_type: string;
+            /** Failback Started At */
+            failback_started_at: string | null;
+            /** Health Score */
+            health_score: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Network Cut At */
+            network_cut_at: string | null;
+            /** Parent Dr Event Id */
+            parent_dr_event_id: string | null;
+            /** Planned Start At */
+            planned_start_at: string | null;
+            /** Source Location */
+            source_location: string | null;
+            /** Status */
+            status: string;
+            /** Target Location */
+            target_location: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** ExpectedVersionRequest */
+        ExpectedVersionRequest: {
+            /** Expected Version */
+            expected_version: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -590,6 +914,109 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** PlanDetailResponse */
+        PlanDetailResponse: {
+            /** Application Id */
+            application_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Plan Type */
+            plan_type: string;
+            /** Source Type */
+            source_type: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+            /**
+             * Versions
+             * @default []
+             */
+            versions: components["schemas"]["PlanVersionResponse"][];
+        };
+        /** PlanListResponse */
+        PlanListResponse: {
+            /** Plans */
+            plans: components["schemas"]["PlanResponse"][];
+        };
+        /** PlanResponse */
+        PlanResponse: {
+            /** Application Id */
+            application_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Plan Type */
+            plan_type: string;
+            /** Source Type */
+            source_type: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** PlanVersionResponse */
+        PlanVersionResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Dr Event Id */
+            dr_event_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Milestone Count */
+            milestone_count: number;
+            /** Notes */
+            notes: string | null;
+            /** Plan Id */
+            plan_id: string | null;
+            /** Task Count */
+            task_count: number;
+            /** Task Dependency Count */
+            task_dependency_count: number;
+            /** Version Number */
+            version_number: number;
+            /** Version Type */
+            version_type: string;
+        };
         /** PolicyItemResponse */
         PolicyItemResponse: {
             /** Description */
@@ -651,6 +1078,22 @@ export interface components {
             scope_type: string;
             /** Value */
             value: unknown;
+        };
+        /** SnapshotItemRequest */
+        SnapshotItemRequest: {
+            /** Snapshot Data */
+            snapshot_data: {
+                [key: string]: unknown;
+            };
+            /** Source Id */
+            source_id?: string | null;
+        };
+        /** StartFailoverRequest */
+        StartFailoverRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Network Cut At */
+            network_cut_at?: string | null;
         };
         /** TeamListResponse */
         TeamListResponse: {
@@ -1398,6 +1841,300 @@ export interface operations {
             };
         };
     };
+    list_events_route_api_v1_dr_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrEventListResponse"];
+                };
+            };
+        };
+    };
+    post_create_event_api_v1_dr_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDrEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_route_api_v1_dr_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrEventResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_activate_event_api_v1_dr_events__event_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_cancel_event_api_v1_dr_events__event_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_close_event_api_v1_dr_events__event_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpectedVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_mark_failed_over_api_v1_dr_events__event_id__mark_failed_over_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpectedVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_start_failback_api_v1_dr_events__event_id__start_failback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpectedVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_start_failover_api_v1_dr_events__event_id__start_failover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartFailoverRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -1436,6 +2173,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+        };
+    };
+    list_plans_route_api_v1_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanListResponse"];
+                };
+            };
+        };
+    };
+    post_create_plan_api_v1_plans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_route_api_v1_plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_plan_version_api_v1_plans__plan_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePlanVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
