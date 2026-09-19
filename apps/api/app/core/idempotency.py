@@ -93,12 +93,28 @@ def _hash_body(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
+def hash_file_payload(filename: str, content: bytes) -> str:
+    """Canonical idempotency hash for multipart file uploads.
+
+    Hashing the raw multipart wire body (as `_hash_body` does for JSON routes) doesn't work for
+    uploads: real HTTP clients generate a fresh random multipart boundary on every request, so two
+    logically-identical retries of the "same" upload produce different raw bytes and would wrongly
+    be treated as a mismatch rather than a replay (D-215: "replay returns the original outcome").
+    Hashing the parsed filename + decoded file bytes instead is stable across boundary changes.
+    """
+    return hashlib.sha256(filename.encode("utf-8") + b"\0" + content).hexdigest()
+
+
 async def require_idempotency_key(
     request: Request,
     session: AsyncSession,
     user_id: uuid.UUID,
     clock: Clock | None = None,
+    *,
+    request_hash: str | None = None,
 ) -> IdempotencyContext:
+    """`request_hash`, when given, is used verbatim instead of hashing the raw request body --
+    the multipart-upload route computes it via `hash_file_payload` after parsing the form."""
     key = request.headers.get(IDEMPOTENCY_HEADER)
     if not key:
         raise IdempotencyKeyRequiredError
@@ -106,7 +122,8 @@ async def require_idempotency_key(
     clock = clock or SystemClock()
     now = clock.now()
     route = request.url.path
-    request_hash = _hash_body(await request.body())
+    if request_hash is None:
+        request_hash = _hash_body(await request.body())
 
     # (key, user, route) is UNIQUE regardless of expiry, so an expired row is
     # reset in place rather than replaced by a second insert. FOR UPDATE

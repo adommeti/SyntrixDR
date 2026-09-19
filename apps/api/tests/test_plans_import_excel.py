@@ -301,30 +301,21 @@ async def test_upload_replay_returns_the_same_import_job(
     headers = _idem_headers(csrf_token)
 
     async with await _client(app) as client:
-        # `require_idempotency_key` hashes the raw request body -- httpx's `files=` convenience
-        # param regenerates a random multipart boundary on every call, so two logically-identical
-        # uploads via `files=` would produce different raw bytes and correctly fail as a mismatch,
-        # not a replay. A real client retry resends the exact same encoded bytes; built once here
-        # and reused for both calls to model that.
-        built = client.build_request(
-            "POST",
-            f"/api/v1/dr-events/{event_id}/imports/excel",
-            files={"file": ("plan.xlsx", canonical_workbook(), "application/octet-stream")},
-        )
-        raw_body = await built.aread()
-        content_type = built.headers["content-type"]
-
+        # The idempotency hash is derived from the parsed filename + file bytes
+        # (`hash_file_payload`), not the raw multipart wire body, so two independently-built
+        # `files=` requests -- each with httpx's own random multipart boundary, exactly like two
+        # real client retries -- must still be recognized as the same logical request.
         first = await client.post(
             f"/api/v1/dr-events/{event_id}/imports/excel",
             cookies={"drcc_session": session_id},
-            headers={**headers, "content-type": content_type},
-            content=raw_body,
+            headers=headers,
+            files={"file": ("plan.xlsx", canonical_workbook(), "application/octet-stream")},
         )
         replay = await client.post(
             f"/api/v1/dr-events/{event_id}/imports/excel",
             cookies={"drcc_session": session_id},
-            headers={**headers, "content-type": content_type},
-            content=raw_body,
+            headers=headers,
+            files={"file": ("plan.xlsx", canonical_workbook(), "application/octet-stream")},
         )
 
     assert first.status_code == 201

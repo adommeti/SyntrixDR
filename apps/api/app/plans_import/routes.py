@@ -6,7 +6,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.datastructures import UploadFile
 
-from app.core.idempotency import complete, require_idempotency_key
+from app.core.errors import IdempotencyKeyRequiredError
+from app.core.idempotency import IDEMPOTENCY_HEADER, complete, hash_file_payload, require_idempotency_key
 from app.identity_auth.dependencies import (
     ClockDep,
     CurrentSession,
@@ -209,26 +210,37 @@ async def post_upload_import_excel(
     clock: ClockDep,
     object_store: ObjectStoreDep,
 ) -> ImportJobResponse | JSONResponse:
-    # `require_idempotency_key` hashes the raw request body -- it must run (and call
-    # `request.body()`) BEFORE any multipart form parsing, or the ASGI stream is already consumed
-    # by the time it tries to read it. A `file: UploadFile = File(...)` parameter would parse the
-    # multipart body during FastAPI's own dependency resolution, ahead of this function running at
-    # all, so the file is read manually here instead, after the idempotency check (found in review
-    # -- the naive `File(...)` parameter raised "Stream consumed").
-    ctx = await require_idempotency_key(request, session, session_data.user_id, clock)
-    if ctx.is_replay:
-        assert ctx.stored_status is not None
-        return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
+    # A `file: UploadFile = File(...)` parameter would parse the multipart body during FastAPI's
+    # own dependency resolution, ahead of this function running at all, consuming the ASGI stream
+    # before anything else could read it -- so the file is read manually here instead (found in
+    # review -- the naive `File(...)` parameter raised "Stream consumed"). The idempotency hash is
+    # computed from the parsed filename + content (`hash_file_payload`), not the raw multipart
+    # wire body, since a real client's retry uses a different random multipart boundary each time.
+    if not request.headers.get(IDEMPOTENCY_HEADER):
+        raise IdempotencyKeyRequiredError
 
     form = await request.form()
     upload = form["file"]
     assert isinstance(upload, UploadFile)
     content = await upload.read()
+    filename = upload.filename or "upload.xlsx"
+
+    ctx = await require_idempotency_key(
+        request,
+        session,
+        session_data.user_id,
+        clock,
+        request_hash=hash_file_payload(filename, content),
+    )
+    if ctx.is_replay:
+        assert ctx.stored_status is not None
+        return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
+
     import_job = await create_import_job(
         session,
         actor_id=session_data.user_id,
         dr_event_id=event_id,
-        filename=upload.filename or "upload.xlsx",
+        filename=filename,
         content=content,
         object_store=object_store,
         clock=clock,
