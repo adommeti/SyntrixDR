@@ -1,6 +1,23 @@
 {
   "components": {
     "schemas": {
+      "AcceptImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mapping": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnMappingRequest"
+            },
+            "title": "Mapping",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mapping"
+        ],
+        "title": "AcceptImportRequest",
+        "type": "object"
+      },
       "ActivateEventRequest": {
         "additionalProperties": false,
         "properties": {
@@ -203,6 +220,62 @@
           "reason"
         ],
         "title": "CancelEventRequest",
+        "type": "object"
+      },
+      "ColumnMappingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source_header": {
+            "title": "Source Header",
+            "type": "string"
+          },
+          "target_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Field"
+          }
+        },
+        "required": [
+          "source_header"
+        ],
+        "title": "ColumnMappingRequest",
+        "type": "object"
+      },
+      "ColumnMappingResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "source_header": {
+            "title": "Source Header",
+            "type": "string"
+          },
+          "target_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Field"
+          }
+        },
+        "required": [
+          "source_header",
+          "target_field",
+          "confidence"
+        ],
+        "title": "ColumnMappingResponse",
         "type": "object"
       },
       "CreateApplicationRequest": {
@@ -739,6 +812,126 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImportJobDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dr_event_id": {
+            "format": "uuid",
+            "title": "Dr Event Id",
+            "type": "string"
+          },
+          "error_data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Data"
+          },
+          "headers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "proposed_mapping": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ColumnMappingResponse"
+            },
+            "title": "Proposed Mapping",
+            "type": "array"
+          },
+          "rows": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ImportRowResponse"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "source_file_uri": {
+            "title": "Source File Uri",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "dr_event_id",
+          "status",
+          "source_file_uri",
+          "error_data",
+          "created_at",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "ImportJobDetailResponse",
+        "type": "object"
+      },
+      "ImportRowResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "row_number": {
+            "title": "Row Number",
+            "type": "integer"
+          },
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "row_number",
+          "values"
+        ],
+        "title": "ImportRowResponse",
         "type": "object"
       },
       "LocalLoginRequest": {
@@ -2913,6 +3106,47 @@
         ]
       }
     },
+    "/api/v1/dr-events/{event_id}/imports/excel": {
+      "post": {
+        "operationId": "post_upload_import_excel_api_v1_dr_events__event_id__imports_excel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Upload Import Excel",
+        "tags": [
+          "plans_import"
+        ]
+      }
+    },
     "/api/v1/dr-events/{event_id}/mark-failed-over": {
       "post": {
         "operationId": "post_mark_failed_over_api_v1_dr_events__event_id__mark_failed_over_post",
@@ -3086,6 +3320,100 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/v1/imports/{import_job_id}": {
+      "get": {
+        "operationId": "get_import_job_route_api_v1_imports__import_job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "import_job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Import Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Import Job Route",
+        "tags": [
+          "plans_import"
+        ]
+      }
+    },
+    "/api/v1/imports/{import_job_id}/accept": {
+      "post": {
+        "operationId": "post_accept_import_api_v1_imports__import_job_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "import_job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Import Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Accept Import",
+        "tags": [
+          "plans_import"
+        ]
       }
     },
     "/api/v1/me": {

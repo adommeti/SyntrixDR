@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.users_teams_org.models import RoleAssignment, Team, TeamMembership, User
@@ -69,6 +69,33 @@ async def get_user(session: AsyncSession, user_id: uuid.UUID) -> User | None:
 async def list_teams(session: AsyncSession) -> list[Team]:
     result = await session.execute(select(Team).where(Team.deleted_at.is_(None)).order_by(Team.name))
     return list(result.scalars().all())
+
+
+async def get_team_by_name(session: AsyncSession, name: str) -> Team | None:
+    """Case-insensitive exact match among non-deleted Teams. Used by BUILD-05's Excel import
+    row resolution for `Owning Team`."""
+    result = await session.execute(
+        select(Team).where(func.lower(Team.name) == name.lower(), Team.deleted_at.is_(None))
+    )
+    return result.scalar_one_or_none()
+
+
+async def find_active_user_by_display_name(session: AsyncSession, display_name: str) -> uuid.UUID | None:
+    """Case-insensitive exact match on `display_name` among active, non-deleted Users. Returns
+    `None` on zero OR more than one match -- an ambiguous name must never silently resolve to one
+    of several candidates (BUILD-05's Excel import uses this for Task assignee resolution, where a
+    wrong pick would misassign real work, not just a cosmetic mismatch)."""
+    result = await session.execute(
+        select(User.id).where(
+            func.lower(User.display_name) == display_name.lower(),
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+    )
+    matches = result.scalars().all()
+    if len(matches) != 1:
+        return None
+    return matches[0]
 
 
 async def get_team_workload(session: AsyncSession, team_id: uuid.UUID) -> dict[str, object] | None:

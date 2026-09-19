@@ -74,6 +74,12 @@ class Capability(str, Enum):
     #: but Coordinator-inclusive (unlike the two above) since Plans feed directly into
     #: Coordinator-owned Event lifecycle, mirroring EVENT_LIFECYCLE_COMMAND's ungated grant.
     MANAGE_PLANS = "MANAGE_PLANS"
+    #: BUILD-05: RBAC_MATRIX.md has no row for Excel import either — gap-filling per ADR-035.
+    #: Kept distinct from MANAGE_PLANS (not reused) even though both grant identically today:
+    #: imports and Plans are related-but-separate surfaces (BUILD-05.plan.md Risk #7), so a
+    #: future RBAC_MATRIX row could split them (e.g. an Owner who may review import mappings but
+    #: not author Plans from scratch) without a capability rename.
+    MANAGE_IMPORTS = "MANAGE_IMPORTS"
 
 
 #: Capabilities `GLOBAL_READONLY` may exercise (read-only; RBAC_MATRIX.md's only read-labeled row).
@@ -210,6 +216,7 @@ GRANTS: dict[Capability, dict[str, bool | str]] = {
     Capability.MANAGE_APPLICATION_CATALOG: {"GLOBAL_ADMIN": True},
     Capability.MANAGE_TIERS: {"GLOBAL_ADMIN": True},
     Capability.MANAGE_PLANS: {"GLOBAL_ADMIN": True, "DR_COORDINATOR": True},
+    Capability.MANAGE_IMPORTS: {"GLOBAL_ADMIN": True, "DR_COORDINATOR": True},
     Capability.AI_ACT: {
         "GLOBAL_ADMIN": True,
         "DR_COORDINATOR": True,

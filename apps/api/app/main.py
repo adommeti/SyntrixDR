@@ -13,6 +13,7 @@ from app.applications_catalog.routes import router as applications_catalog_route
 from app.core.config import Settings, get_settings
 from app.core.database import make_engine, make_session_factory
 from app.core.errors import AppError, app_error_handler, unhandled_error_handler
+from app.core.storage import ObjectStore
 from app.core.telemetry import configure_telemetry
 from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.oidc import register_entra_oauth
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         idle_minutes=settings.session_idle_minutes,
         absolute_hours=settings.session_absolute_hours,
     )
+    app.state.object_store = ObjectStore(settings.azure_storage_connection_string)
     register_entra_oauth(app.state.redis)
 
     app.middleware("http")(correlation_id_middleware)

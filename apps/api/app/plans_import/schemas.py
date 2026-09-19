@@ -70,3 +70,59 @@ class CreatePlanVersionRequest(BaseModel):
     tasks: list[SnapshotItemRequest] = []
     task_dependencies: list[SnapshotItemRequest] = []
     milestones: list[SnapshotItemRequest] = []
+
+
+class ImportJobResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    dr_event_id: uuid.UUID
+    status: str
+    source_file_uri: str
+    error_data: dict[str, object] | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+
+class ColumnMappingResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_header: str
+    target_field: str | None
+    confidence: float
+
+
+class ImportRowResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_number: int
+    values: dict[str, object]
+
+
+class ImportJobDetailResponse(ImportJobResponse):
+    headers: list[str] = []
+    proposed_mapping: list[ColumnMappingResponse] = []
+    rows: list[ImportRowResponse] = []
+
+
+class ColumnMappingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_header: str
+    target_field: str | None = None
+
+
+class AcceptImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mapping: list[ColumnMappingRequest]
+
+
+class AcceptImportResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    import_job: ImportJobResponse
+    created_task_count: int
+    created_dependency_count: int
+    needs_review_count: int

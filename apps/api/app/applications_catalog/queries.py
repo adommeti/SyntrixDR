@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.applications_catalog.models import Application, ApplicationOwner, Tier
@@ -17,6 +17,17 @@ async def list_applications(session: AsyncSession) -> list[Application]:
         select(Application).where(Application.deleted_at.is_(None)).order_by(Application.name)
     )
     return list(result.scalars().all())
+
+
+async def get_application_by_name(session: AsyncSession, name: str) -> Application | None:
+    """Case-insensitive exact match among non-deleted Applications. Used by BUILD-05's Excel
+    import row resolution for the `Application` column."""
+    result = await session.execute(
+        select(Application).where(
+            func.lower(Application.name) == name.lower(), Application.deleted_at.is_(None)
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def list_application_owners(session: AsyncSession, application_id: uuid.UUID) -> list[ApplicationOwner]:

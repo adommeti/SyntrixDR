@@ -10,9 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app.core.config import get_settings
 from app.core.database import Base
+from app.core.file_policy import FilePolicy
 from app.core.idempotency import IdempotencyKey
 from app.core.outbox import OutboxEvent
 from app.plans_import.models import PlanVersion
+from app.work_streams.models import WorkStream
 
 config = context.config
 
@@ -26,7 +28,10 @@ target_metadata = Base.metadata
 # (schema_v1.sql's deferred `fk_event_baseline` ALTER) and nothing else in this module's own
 # import chain (`core.idempotency`/`core.outbox`) pulls `plans_import.models` in, so running
 # `alembic check` without this explicit import fails to resolve that FK's target table.
-_MODELED_TABLES = (IdempotencyKey, OutboxEvent, PlanVersion)
+# `WorkStream`/`FilePolicy` (BUILD-05): nothing yet imports `work_streams.models`/
+# `core.file_policy` either, so their tables would be invisible to `alembic check` without this
+# explicit registration.
+_MODELED_TABLES = (IdempotencyKey, OutboxEvent, PlanVersion, WorkStream, FilePolicy)
 
 
 def get_url() -> str:

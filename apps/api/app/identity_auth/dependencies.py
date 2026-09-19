@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.clock import Clock, SystemClock
 from app.core.database import get_request_session
 from app.core.errors import AppError
+from app.core.storage import ObjectStore
 from app.identity_auth.models import ReauthGrant
 from app.identity_auth.session_store import RedisSessionStore, SessionData
 
@@ -21,9 +22,17 @@ async def get_session_store(request: Request) -> RedisSessionStore:
     return request.app.state.session_store  # type: ignore[no-any-return]
 
 
+async def get_object_store(request: Request) -> ObjectStore:
+    """FastAPI dependency: the process-wide `ObjectStore` adapter on `app.state` (D-217, BUILD-05).
+    Lives alongside `get_session_store` even though it's not identity-specific, matching this
+    module's existing role as the shared home for generic `app.state`-backed dependencies."""
+    return request.app.state.object_store  # type: ignore[no-any-return]
+
+
 DbSession = Annotated[AsyncSession, Depends(get_request_session)]
 SessionStore = Annotated[RedisSessionStore, Depends(get_session_store)]
 ClockDep = Annotated[Clock, Depends(get_clock)]
+ObjectStoreDep = Annotated[ObjectStore, Depends(get_object_store)]
 
 
 class SessionExpiredError(AppError):
