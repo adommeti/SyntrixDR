@@ -4,20 +4,48 @@ import uuid
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from starlette.datastructures import UploadFile
 
-from app.core.idempotency import complete, require_idempotency_key
-from app.identity_auth.dependencies import ClockDep, CurrentSession, DbSession, RequireCsrfDependency
-from app.plans_import.commands import PlanNotFoundError, SnapshotItem, create_plan, create_plan_version
-from app.plans_import.models import Plan, PlanVersion
-from app.plans_import.queries import count_snapshot_rows, get_plan, list_plan_versions, list_plans
+from app.core.errors import IdempotencyKeyRequiredError
+from app.core.idempotency import IDEMPOTENCY_HEADER, complete, hash_file_payload, require_idempotency_key
+from app.identity_auth.dependencies import (
+    ClockDep,
+    CurrentSession,
+    DbSession,
+    ObjectStoreDep,
+    RequireCsrfDependency,
+)
+from app.plans_import.commands import (
+    PlanNotFoundError,
+    SnapshotItem,
+    create_import_job,
+    create_plan,
+    create_plan_version,
+)
+from app.plans_import.jobs import parse_import_excel
+from app.plans_import.models import ImportJob, Plan, PlanVersion
+from app.plans_import.queries import (
+    count_snapshot_rows,
+    get_plan,
+    get_visible_import_job,
+    list_plan_versions,
+    list_plans,
+)
 from app.plans_import.schemas import (
+    AcceptImportRequest,
+    AcceptImportResponse,
+    ColumnMappingResponse,
     CreatePlanRequest,
     CreatePlanVersionRequest,
+    ImportJobDetailResponse,
+    ImportJobResponse,
+    ImportRowResponse,
     PlanDetailResponse,
     PlanListResponse,
     PlanResponse,
     PlanVersionResponse,
 )
+from app.plans_import.transition_service import ImportJobNotFoundError, ImportJobTransitionService
 
 router = APIRouter(prefix="/api/v1", tags=["plans_import"])
 
@@ -141,5 +169,129 @@ async def post_create_plan_version(
     )
     response = await _plan_version_response(session, version)
     await complete(session, ctx, 201, response.model_dump(mode="json"))
+    await session.commit()
+    return response
+
+
+def _import_job_response(import_job: ImportJob) -> ImportJobResponse:
+    return ImportJobResponse(
+        id=import_job.id,
+        dr_event_id=import_job.dr_event_id,
+        status=import_job.status,
+        source_file_uri=import_job.source_file_uri,
+        error_data=import_job.error_data,
+        created_at=import_job.created_at,
+        started_at=import_job.started_at,
+        completed_at=import_job.completed_at,
+    )
+
+
+def _import_job_detail_response(import_job: ImportJob) -> ImportJobDetailResponse:
+    mapping_data = import_job.mapping_data or {}
+    return ImportJobDetailResponse(
+        **_import_job_response(import_job).model_dump(),
+        headers=mapping_data.get("headers", []),
+        proposed_mapping=[ColumnMappingResponse(**m) for m in mapping_data.get("proposed_mapping", [])],
+        rows=[ImportRowResponse(**r) for r in mapping_data.get("rows", [])],
+    )
+
+
+@router.post(
+    "/dr-events/{event_id}/imports/excel",
+    status_code=201,
+    dependencies=[RequireCsrfDependency],
+    response_model=None,
+)
+async def post_upload_import_excel(
+    event_id: uuid.UUID,
+    request: Request,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+    object_store: ObjectStoreDep,
+) -> ImportJobResponse | JSONResponse:
+    # A `file: UploadFile = File(...)` parameter would parse the multipart body during FastAPI's
+    # own dependency resolution, ahead of this function running at all, consuming the ASGI stream
+    # before anything else could read it -- so the file is read manually here instead (found in
+    # review -- the naive `File(...)` parameter raised "Stream consumed"). The idempotency hash is
+    # computed from the parsed filename + content (`hash_file_payload`), not the raw multipart
+    # wire body, since a real client's retry uses a different random multipart boundary each time.
+    if not request.headers.get(IDEMPOTENCY_HEADER):
+        raise IdempotencyKeyRequiredError
+
+    form = await request.form()
+    upload = form["file"]
+    assert isinstance(upload, UploadFile)
+    content = await upload.read()
+    filename = upload.filename or "upload.xlsx"
+
+    ctx = await require_idempotency_key(
+        request,
+        session,
+        session_data.user_id,
+        clock,
+        request_hash=hash_file_payload(filename, content),
+    )
+    if ctx.is_replay:
+        assert ctx.stored_status is not None
+        return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
+
+    import_job = await create_import_job(
+        session,
+        actor_id=session_data.user_id,
+        dr_event_id=event_id,
+        filename=filename,
+        content=content,
+        object_store=object_store,
+        clock=clock,
+    )
+    response = _import_job_response(import_job)
+    await complete(session, ctx, 201, response.model_dump(mode="json"))
+    await session.commit()
+    parse_import_excel.delay(  # pyright: ignore[reportUnknownMemberType, reportFunctionMemberAccess]
+        str(import_job.id)
+    )
+    return response
+
+
+@router.get("/imports/{import_job_id}")
+async def get_import_job_route(
+    import_job_id: uuid.UUID, session: DbSession, session_data: CurrentSession
+) -> ImportJobDetailResponse:
+    import_job = await get_visible_import_job(session, session_data.user_id, import_job_id)
+    if import_job is None:
+        raise ImportJobNotFoundError()
+    return _import_job_detail_response(import_job)
+
+
+@router.post("/imports/{import_job_id}/accept", dependencies=[RequireCsrfDependency], response_model=None)
+async def post_accept_import(
+    import_job_id: uuid.UUID,
+    request: Request,
+    body: AcceptImportRequest,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+) -> AcceptImportResponse | JSONResponse:
+    ctx = await require_idempotency_key(request, session, session_data.user_id, clock)
+    if ctx.is_replay:
+        assert ctx.stored_status is not None
+        return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
+
+    confirmed_mapping = {m.source_header: m.target_field for m in body.mapping}
+    import_job, summary = await ImportJobTransitionService.accept(
+        session,
+        actor_id=session_data.user_id,
+        import_job_id=import_job_id,
+        confirmed_mapping=confirmed_mapping,
+        clock=clock,
+    )
+    response = AcceptImportResponse(
+        import_job=_import_job_response(import_job),
+        created_task_count=summary.created_task_count,
+        created_dependency_count=summary.created_dependency_count,
+        needs_review_count=summary.needs_review_count,
+    )
+    await complete(session, ctx, 200, response.model_dump(mode="json"))
     await session.commit()
     return response

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -11,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     Text,
     UniqueConstraint,
     text,
@@ -21,14 +23,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.applications_catalog.models import Application
 from app.core.database import Base
-from app.core.external_refs import milestones_table, task_dependencies_table, tasks_table
+from app.core.external_refs import milestones_table
+from app.tasks_dependencies.models import Task, TaskDependency
 
-# `Application` already has a real ORM-mapped class (unlike `tasks`/`task_dependencies`/
-# `milestones`, whose owning modules don't exist yet and use the `core/external_refs.py` stub
+# `Application`/`Task`/`TaskDependency` already have real ORM-mapped classes (unlike
+# `milestones`, whose owning module doesn't exist yet and uses the `core/external_refs.py` stub
 # pattern below) -- importing the class directly, not a stub, is correct here; see the longer
 # rationale in `dr_events/models.py` for why this is a deliberate exception to
 # `.claude/rules/python-api.md`'s cross-module rule, not an oversight.
-_ = (Application, tasks_table, task_dependencies_table, milestones_table)  # FK-resolution registration
+_ = (Application, Task, TaskDependency, milestones_table)  # FK-resolution registration
 
 
 def _now_utc() -> datetime:
@@ -125,9 +128,9 @@ class PlanVersion(Base):
 
 class PlanVersionTask(Base):
     """JSONB snapshot of one Task at `plan_version_id`'s point in time. `source_task_id` FKs to
-    the live `tasks` table (owned by `tasks_dependencies`, not built yet) via the
-    `core.external_refs.tasks_table` FK-resolution stub, `ON DELETE SET NULL` matching
-    schema_v1.sql exactly — a deleted source Task doesn't invalidate the historical snapshot."""
+    the live `tasks` table (`tasks_dependencies.models.Task`, BUILD-05), `ON DELETE SET NULL`
+    matching schema_v1.sql exactly — a deleted source Task doesn't invalidate the historical
+    snapshot."""
 
     __tablename__ = "plan_version_tasks"
     __table_args__ = (UniqueConstraint("plan_version_id", "source_task_id"),)
@@ -174,4 +177,103 @@ class PlanVersionMilestone(Base):
         PgUUID(as_uuid=True), ForeignKey("milestones.id", ondelete="SET NULL"), nullable=True
     )
     snapshot_data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now_utc)
+
+
+class ImportJob(Base):
+    """Excel import job (schema_v1.sql:734-744, D-221). `status` is plain TEXT in the frozen
+    schema (no DB enum) -- the value set (`PENDING`, `PARSED`, `PARSE_FAILED`, `ACCEPTED`) is
+    defined in code by `transition_service.py::ImportJobTransitionService`, the only file that
+    writes it. No `version` column on this table -- no optimistic-concurrency check needed, but
+    every command POST still requires `Idempotency-Key` (D-215's blanket rule)."""
+
+    __tablename__ = "import_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dr_event_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("dr_events.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_file_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="PENDING")
+    mapping_data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    error_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now_utc)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NeedsReviewItem(Base):
+    """Low-confidence import row flagged for human follow-up (schema_v1.sql:632-647, D-221). No
+    dedicated module owns this table yet, so it lives here alongside its first caller (same
+    precedent as `dr_events/models.py::Override` and BUILD-04.plan.md Risk #5). BUILD-05 only
+    creates rows (`status` defaults `OPEN`, never set explicitly here) -- resolution/routing is a
+    later increment's job (`Capability.RESOLVE_NEEDS_REVIEW` already exists, unused until then)."""
+
+    __tablename__ = "needs_review_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dr_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("dr_events.id", ondelete="RESTRICT"), nullable=True
+    )
+    target_type: Mapped[str] = mapped_column(
+        Enum(
+            "DR_EVENT",
+            "DR_APPLICATION",
+            "APPLICATION",
+            "WORK_STREAM",
+            "TASK",
+            "TASK_DEPENDENCY",
+            "MILESTONE",
+            "BLOCKER",
+            "ISSUE_FINDING",
+            "VALIDATION",
+            "IMPORT_JOB",
+            "PLAN",
+            "PLAN_VERSION",
+            "REPORT",
+            "DOCUMENT",
+            "ALERT",
+            name="target_type",
+            native_enum=True,
+            create_type=False,
+        ),
+        nullable=False,
+    )
+    target_id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(
+        Enum(
+            "AI",
+            "EXCEL_IMPORT",
+            "SEMANTIC_INFERENCE",
+            name="review_source",
+            native_enum=True,
+            create_type=False,
+        ),
+        nullable=False,
+    )
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(7, 6), nullable=True)
+    status: Mapped[str] = mapped_column(
+        Enum(
+            "OPEN",
+            "IN_REVIEW",
+            "RESOLVED",
+            "DISMISSED",
+            name="review_status",
+            native_enum=True,
+            create_type=False,
+        ),
+        nullable=False,
+        default="OPEN",
+    )
+    assigned_scope_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assigned_scope_id: Mapped[uuid.UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
+    resolved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now_utc)

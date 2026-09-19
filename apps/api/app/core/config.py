@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     blob_container_evidence: str = "evidence"
     blob_container_documents: str = "documents"
     blob_container_packages: str = "packages"
+    blob_container_imports: str = "imports"
 
     smtp_host: str = "localhost"
     smtp_port: int = 1025

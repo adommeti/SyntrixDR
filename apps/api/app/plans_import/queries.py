@@ -5,7 +5,9 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dr_events.participants import user_can_see_event
 from app.plans_import.models import (
+    ImportJob,
     Plan,
     PlanVersion,
     PlanVersionMilestone,
@@ -65,3 +67,17 @@ async def next_plan_version_number(session: AsyncSession, plan_id: uuid.UUID) ->
     )
     current_max = result.scalar_one_or_none()
     return (current_max or 0) + 1
+
+
+async def get_visible_import_job(
+    session: AsyncSession, user_id: uuid.UUID, import_job_id: uuid.UUID
+) -> ImportJob | None:
+    """Returns `None` (not a 403) for a foreign job the caller can't see, so the route 404s
+    without confirming the job exists -- same IDOR-safe shape as
+    `dr_events/queries.py::get_visible_event`."""
+    import_job = await session.get(ImportJob, import_job_id)
+    if import_job is None:
+        return None
+    if not await user_can_see_event(session, user_id, import_job.dr_event_id):
+        return None
+    return import_job
