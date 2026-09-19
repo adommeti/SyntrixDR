@@ -32,6 +32,7 @@ from app.plans_import.routes import router as plans_import_router
 from app.users_teams_org.models import RoleAssignment
 from tests.fixtures.imports.workbooks import (
     canonical_workbook,
+    cyclical_workbook,
     messy_workbook,
     reordered_renamed_workbook,
 )
@@ -455,6 +456,61 @@ async def test_accept_before_parsed_returns_409(
 
 
 @pytest.mark.asyncio
+async def test_accept_requires_manage_imports_capability(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    admin_id = await _create_entra_admin(session)
+    event_id = await _create_event_row(session, actor_id=admin_id, name="Accept No Capability Event")
+    import_job_id = await _upload_and_parse(
+        session, actor_id=admin_id, dr_event_id=event_id, filename="plan.xlsx", content=canonical_workbook()
+    )
+    bare_user_id = await _create_user(session, display_name="No Capability User")
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, bare_user_id)
+
+    async with await _client(app) as client:
+        response = await client.post(
+            f"/api/v1/imports/{import_job_id}/accept",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"mapping": []},
+        )
+
+    assert response.status_code == 403
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_accept_404s_for_a_caller_who_cannot_see_the_event(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    admin_id = await _create_entra_admin(session)
+    event_id = await _create_event_row(session, actor_id=admin_id, name="Accept Foreign Event")
+    import_job_id = await _upload_and_parse(
+        session, actor_id=admin_id, dr_event_id=event_id, filename="plan.xlsx", content=canonical_workbook()
+    )
+    # DR_COORDINATOR (not GLOBAL_ADMIN) so the actor has `MANAGE_IMPORTS` but no implicit
+    # cross-Event visibility (D-222) -- proves the 404 is a real participant-visibility check,
+    # not just an unreachable branch behind the capability gate.
+    outsider_id = await _create_user(session, display_name="Foreign Coordinator")
+    session.add(RoleAssignment(user_id=outsider_id, role_key="DR_COORDINATOR", scope_type="GLOBAL"))
+    await session.flush()
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, outsider_id)
+
+    async with await _client(app) as client:
+        response = await client.post(
+            f"/api/v1/imports/{import_job_id}/accept",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"mapping": []},
+        )
+
+    assert response.status_code == 404
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
 async def test_accept_canonical_workbook_creates_draft_tasks_and_dependency(
     session: AsyncSession, redis_client: Redis, clock: FakeClock
 ) -> None:
@@ -602,6 +658,51 @@ async def test_messy_workbook_flags_needs_review_and_skips_bad_rows(
     assert any(r.target_type == "IMPORT_JOB" and "missing required Task title" in r.reason for r in rows)
     assert any(r.target_type == "IMPORT_JOB" and "Owning Team" in r.reason for r in rows)
     assert any(r.target_type == "TASK" and "unresolved predecessor" in r.reason for r in rows)
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_cyclical_workbook_rejects_the_would_be_cycle_edge(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    admin_id = await _create_entra_admin(session)
+    event_id = await _create_event_row(session, actor_id=admin_id, name="Cyclical Accept Event")
+    await _create_team(session, name="Network Team")
+    import_job_id = await _upload_and_parse(
+        session, actor_id=admin_id, dr_event_id=event_id, filename="plan.xlsx", content=cyclical_workbook()
+    )
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        detail = await client.get(f"/api/v1/imports/{import_job_id}", cookies={"drcc_session": session_id})
+        mapping = [
+            {"source_header": m["source_header"], "target_field": m["target_field"]}
+            for m in detail.json()["proposed_mapping"]
+        ]
+        response = await client.post(
+            f"/api/v1/imports/{import_job_id}/accept",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"mapping": mapping},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["created_task_count"] == 2
+    # First edge (A->B) commits; the reverse (B->A) would create a cycle and is rejected.
+    assert body["created_dependency_count"] == 1
+    assert body["needs_review_count"] == 1
+
+    dependency_count = await session.execute(
+        text("SELECT COUNT(*) AS cnt FROM task_dependencies WHERE dr_event_id = :eid"), {"eid": event_id}
+    )
+    assert dependency_count.one().cnt == 1
+
+    reason = await session.execute(
+        text("SELECT reason FROM needs_review_items WHERE dr_event_id = :eid"), {"eid": event_id}
+    )
+    assert "dependency cycle" in reason.scalar_one()
     await redis_client.delete(f"drcc:session:{session_id}")
 
 

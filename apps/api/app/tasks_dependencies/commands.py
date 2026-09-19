@@ -78,6 +78,23 @@ async def create_draft_task(
     return task
 
 
+async def dependency_exists(
+    session: AsyncSession, *, predecessor_task_id: uuid.UUID, successor_task_id: uuid.UUID
+) -> bool:
+    """Used by `plans_import/commands.py::process_accepted_import` to reject an import row that
+    would create a direct 2-node cycle (row A's predecessor is B, row B's predecessor is A) by
+    checking whether the reverse edge already exists -- full N-node DAG cycle detection across the
+    whole graph is BUILD-06's scope (plan Risk #2)."""
+    existing = await session.execute(
+        select(TaskDependency.id).where(
+            TaskDependency.predecessor_task_id == predecessor_task_id,
+            TaskDependency.successor_task_id == successor_task_id,
+            TaskDependency.deleted_at.is_(None),
+        )
+    )
+    return existing.first() is not None
+
+
 async def create_draft_dependency(
     session: AsyncSession,
     *,

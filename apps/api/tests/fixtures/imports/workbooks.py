@@ -109,3 +109,16 @@ def messy_workbook() -> bytes:
             ],
         ]
     )
+
+
+def cyclical_workbook() -> bytes:
+    """Two rows whose predecessor references point at each other -- Row A's predecessor is Row B,
+    and Row B's predecessor is Row A -- proves the accept flow rejects (flags for review, doesn't
+    silently commit) a directed dependency cycle rather than writing one into the live Task graph."""
+    return _to_bytes(
+        [
+            ["Task", "Owning Team", "Work Stream", "Predecessor / Dependency", "Notes"],
+            ["Task A", "Network Team", "Network", "Task B", "Predecessor is Task B"],
+            ["Task B", "Network Team", "Network", "Task A", "Predecessor is Task A"],
+        ]
+    )

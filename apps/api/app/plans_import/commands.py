@@ -31,6 +31,7 @@ from app.tasks_dependencies.commands import (
     TaskContextRequiredError,
     create_draft_dependency,
     create_draft_task,
+    dependency_exists,
 )
 from app.users_teams_org.authorization import AuthorizationService, Capability
 from app.users_teams_org.queries import find_active_user_by_display_name, get_team_by_name
@@ -604,6 +605,7 @@ async def process_accepted_import(
             pending_predecessors.append((task.id, row_number, str(predecessor_value)))
 
     summary_created_dependencies = 0
+    created_edges: set[tuple[uuid.UUID, uuid.UUID]] = set()
     for successor_id, row_number, raw_predecessor_value in pending_predecessors:
         for predecessor_name in raw_predecessor_value.split(","):
             predecessor_name = predecessor_name.strip()
@@ -619,6 +621,22 @@ async def process_accepted_import(
                     )
                 )
                 continue
+            # Reject a direct 2-node cycle (this row's predecessor is X, and X's own predecessor,
+            # created earlier in this same accept, is this row) instead of silently committing a
+            # directed cycle into the live Task graph (invariant: "no directed cycles").
+            reverse_edge = (successor_id, predecessor_task_id)
+            if reverse_edge in created_edges or await dependency_exists(
+                session, predecessor_task_id=successor_id, successor_task_id=predecessor_task_id
+            ):
+                summary_needs_review.append(
+                    (
+                        "TASK",
+                        successor_id,
+                        f"Row {row_number}: predecessor {predecessor_name!r} would create a "
+                        "dependency cycle and was not linked",
+                    )
+                )
+                continue
             dependency = await create_draft_dependency(
                 session,
                 dr_event_id=dr_event_id,
@@ -627,6 +645,7 @@ async def process_accepted_import(
                 created_by_user_id=actor_id,
             )
             if dependency is not None:
+                created_edges.add((predecessor_task_id, successor_id))
                 summary_created_dependencies += 1
 
     for target_type, target_id, reason in summary_needs_review:
