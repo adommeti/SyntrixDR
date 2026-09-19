@@ -18,6 +18,7 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai_orchestration.provider import AIProvider
 from app.core.clock import Clock, FakeClock
 from app.core.config import get_settings
 from app.core.database import get_request_session
@@ -178,6 +179,7 @@ async def _upload_and_parse(
     dr_event_id: uuid.UUID,
     filename: str,
     content: bytes,
+    ai_provider: AIProvider | None = None,
 ) -> uuid.UUID:
     """Command-layer upload + direct (non-Celery) parse, for tests that only need a PARSED job
     and don't care about exercising the HTTP upload route itself. Uses `parse_import_job` (not
@@ -193,7 +195,9 @@ async def _upload_and_parse(
         content=content,
         object_store=object_store,
     )
-    await parse_import_job(session, object_store=object_store, import_job_id=import_job.id)
+    await parse_import_job(
+        session, object_store=object_store, import_job_id=import_job.id, ai_provider=ai_provider
+    )
     return import_job.id
 
 
@@ -607,4 +611,122 @@ async def test_messy_workbook_flags_needs_review_and_skips_bad_rows(
     assert any(r.target_type == "IMPORT_JOB" and "missing required Task title" in r.reason for r in rows)
     assert any(r.target_type == "IMPORT_JOB" and "Owning Team" in r.reason for r in rows)
     assert any(r.target_type == "TASK" and "unresolved predecessor" in r.reason for r in rows)
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+class _StubAIProvider:
+    def __init__(self, response: str) -> None:
+        self._response = response
+
+    async def complete(self, prompt: str) -> str:
+        _ = prompt
+        return self._response
+
+
+class _RaisingAIProvider:
+    async def complete(self, prompt: str) -> str:
+        _ = prompt
+        raise RuntimeError("provider unavailable")
+
+
+@pytest.mark.asyncio
+async def test_parsing_without_an_ai_provider_is_unchanged_from_session_a(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """`ai_provider=None` (the default, matching `AI_ENABLED=false`) must be a provable no-op --
+    this is the AI-disabled regression guard session a's own evidence table deferred to session b."""
+    admin_id = await _create_entra_admin(session)
+    event_id = await _create_event_row(session, actor_id=admin_id, name="AI Disabled Event")
+    import_job_id = await _upload_and_parse(
+        session,
+        actor_id=admin_id,
+        dr_event_id=event_id,
+        filename="plan.xlsx",
+        content=canonical_workbook(),
+        ai_provider=None,
+    )
+    app = _build_app(session, redis_client, clock)
+    session_id, _csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        response = await client.get(f"/api/v1/imports/{import_job_id}", cookies={"drcc_session": session_id})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "PARSED"
+
+    review_count = await session.execute(
+        text("SELECT COUNT(*) AS cnt FROM needs_review_items WHERE target_id = :jid AND source = 'AI'"),
+        {"jid": import_job_id},
+    )
+    assert review_count.one().cnt == 0
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_ai_provider_disagreement_creates_a_needs_review_item_without_changing_the_mapping(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    admin_id = await _create_entra_admin(session)
+    event_id = await _create_event_row(session, actor_id=admin_id, name="AI Enabled Event")
+    ai_response = '[{"source_header": "Tier", "target_field": "notes", "confidence": 0.55}]'
+    import_job_id = await _upload_and_parse(
+        session,
+        actor_id=admin_id,
+        dr_event_id=event_id,
+        filename="plan.xlsx",
+        content=canonical_workbook(),
+        ai_provider=_StubAIProvider(ai_response),
+    )
+    app = _build_app(session, redis_client, clock)
+    session_id, _csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        response = await client.get(f"/api/v1/imports/{import_job_id}", cookies={"drcc_session": session_id})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "PARSED"
+    # The heuristic's own proposal is untouched -- "Tier" still maps to "tier", the AI's dissenting
+    # opinion never overwrote it.
+    by_header = {m["source_header"]: m for m in body["proposed_mapping"]}
+    assert by_header["Tier"]["target_field"] == "tier"
+
+    review_rows = await session.execute(
+        text(
+            "SELECT reason, confidence, target_type FROM needs_review_items "
+            "WHERE target_id = :jid AND source = 'AI'"
+        ),
+        {"jid": import_job_id},
+    )
+    rows = review_rows.all()
+    assert len(rows) == 1
+    assert rows[0].target_type == "IMPORT_JOB"
+    assert "Tier" in rows[0].reason
+    assert "notes" in rows[0].reason
+    assert float(rows[0].confidence) == 0.55
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_ai_provider_failure_does_not_fail_the_parse_job(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    admin_id = await _create_entra_admin(session)
+    event_id = await _create_event_row(session, actor_id=admin_id, name="AI Failure Event")
+    import_job_id = await _upload_and_parse(
+        session,
+        actor_id=admin_id,
+        dr_event_id=event_id,
+        filename="plan.xlsx",
+        content=canonical_workbook(),
+        ai_provider=_RaisingAIProvider(),
+    )
+    app = _build_app(session, redis_client, clock)
+    session_id, _csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        response = await client.get(f"/api/v1/imports/{import_job_id}", cookies={"drcc_session": session_id})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "PARSED"
     await redis_client.delete(f"drcc:session:{session_id}")
