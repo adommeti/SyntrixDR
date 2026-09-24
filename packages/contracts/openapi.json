@@ -634,6 +634,131 @@
         "title": "CreateTaskDependencyRequest",
         "type": "object"
       },
+      "CreateTaskRequest": {
+        "additionalProperties": false,
+        "description": "API_CONTRACT.md:157 -- the body carries the D-226 evidence fields and D-209's\n`needs_specific_validation`, with their schema defaults.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dr_application_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dr Application Id"
+          },
+          "evidence_min_count": {
+            "default": 1,
+            "minimum": 0.0,
+            "title": "Evidence Min Count",
+            "type": "integer"
+          },
+          "evidence_required": {
+            "default": true,
+            "title": "Evidence Required",
+            "type": "boolean"
+          },
+          "expected_duration_minutes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Duration Minutes"
+          },
+          "needs_specific_validation": {
+            "default": false,
+            "title": "Needs Specific Validation",
+            "type": "boolean"
+          },
+          "owning_team_id": {
+            "format": "uuid",
+            "title": "Owning Team Id",
+            "type": "string"
+          },
+          "parent_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Task Id"
+          },
+          "phase": {
+            "enum": [
+              "PRE_DR",
+              "FAILOVER",
+              "VALIDATION",
+              "FAILBACK",
+              "POST_DR"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "verification_note_required": {
+            "default": true,
+            "title": "Verification Note Required",
+            "type": "boolean"
+          },
+          "work_stream_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Stream Id"
+          }
+        },
+        "required": [
+          "title",
+          "phase",
+          "owning_team_id"
+        ],
+        "title": "CreateTaskRequest",
+        "type": "object"
+      },
       "CreateWorkStreamRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2143,6 +2268,23 @@
         "title": "TaskDependencyResponse",
         "type": "object"
       },
+      "TaskListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskResponse"
+            },
+            "title": "Tasks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tasks"
+        ],
+        "title": "TaskListResponse",
+        "type": "object"
+      },
       "TaskResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2249,6 +2391,13 @@
             "title": "Parent Task Id"
           },
           "phase": {
+            "enum": [
+              "PRE_DR",
+              "FAILOVER",
+              "VALIDATION",
+              "FAILBACK",
+              "POST_DR"
+            ],
             "title": "Phase",
             "type": "string"
           },
@@ -2288,6 +2437,14 @@
             "title": "Started At"
           },
           "status": {
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "BLOCKED",
+              "READY_FOR_VALIDATION",
+              "COMPLETED",
+              "CANCELLED"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -4210,6 +4367,100 @@
         "summary": "Post Start Failover",
         "tags": [
           "dr_events"
+        ]
+      }
+    },
+    "/api/v1/dr-events/{event_id}/tasks": {
+      "get": {
+        "operationId": "list_tasks_route_api_v1_dr_events__event_id__tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tasks Route",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      },
+      "post": {
+        "operationId": "post_create_task_api_v1_dr_events__event_id__tasks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create Task",
+        "tags": [
+          "tasks_dependencies"
         ]
       }
     },

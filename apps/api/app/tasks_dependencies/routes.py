@@ -8,20 +8,23 @@ from fastapi.responses import JSONResponse
 
 from app.core.idempotency import complete, require_idempotency_key
 from app.dr_events.commands import DrEventNotFoundError
+from app.dr_events.queries import get_visible_event
 from app.identity_auth.dependencies import ClockDep, CurrentSession, DbSession, RequireCsrfDependency
-from app.tasks_dependencies.commands import TaskNotFoundError
+from app.tasks_dependencies.commands import TaskNotFoundError, create_task
 from app.tasks_dependencies.dependency_service import DependencyService
 from app.tasks_dependencies.models import Task, TaskDependency
-from app.tasks_dependencies.queries import get_visible_dependency_graph, get_visible_task
+from app.tasks_dependencies.queries import get_visible_dependency_graph, get_visible_task, list_tasks
 from app.tasks_dependencies.schemas import (
     BlockTaskRequest,
     CancelTaskRequest,
     CreateTaskDependencyRequest,
+    CreateTaskRequest,
     DependencyGraphResponse,
     ResumeTaskRequest,
     StartTaskRequest,
     SubmitValidationRequest,
     TaskDependencyResponse,
+    TaskListResponse,
     TaskResponse,
     ValidateTaskRequest,
 )
@@ -308,3 +311,64 @@ async def get_dependency_graph_route(
     if graph is None:
         raise DrEventNotFoundError()
     return DependencyGraphResponse.model_validate(graph)
+
+
+# --------------------------------------------------------------------------------------------
+# Query / create Tasks (API_CONTRACT.md:157)
+# --------------------------------------------------------------------------------------------
+
+
+@router.get("/dr-events/{event_id}/tasks")
+async def list_tasks_route(
+    event_id: uuid.UUID, session: DbSession, session_data: CurrentSession
+) -> TaskListResponse:
+    if await get_visible_event(session, session_data.user_id, event_id) is None:
+        raise DrEventNotFoundError()
+    return TaskListResponse(
+        tasks=[TaskResponse.model_validate(t) for t in await list_tasks(session, event_id)]
+    )
+
+
+@router.post(
+    "/dr-events/{event_id}/tasks",
+    status_code=201,
+    dependencies=[RequireCsrfDependency],
+    response_model=None,
+    responses={201: {"model": TaskResponse}},
+)
+async def post_create_task(
+    event_id: uuid.UUID,
+    request: Request,
+    body: CreateTaskRequest,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+) -> TaskResponse | JSONResponse:
+    ctx = await require_idempotency_key(request, session, session_data.user_id, clock)
+    if ctx.is_replay:
+        assert ctx.stored_status is not None
+        return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
+
+    task = await create_task(
+        session,
+        actor_id=session_data.user_id,
+        dr_event_id=event_id,
+        title=body.title,
+        phase=body.phase,
+        owning_team_id=body.owning_team_id,
+        dr_application_id=body.dr_application_id,
+        work_stream_id=body.work_stream_id,
+        parent_task_id=body.parent_task_id,
+        description=body.description,
+        expected_duration_minutes=body.expected_duration_minutes,
+        sort_order=body.sort_order,
+        evidence_required=body.evidence_required,
+        evidence_min_count=body.evidence_min_count,
+        verification_note_required=body.verification_note_required,
+        needs_specific_validation=body.needs_specific_validation,
+        clock=clock,
+    )
+    response = TaskResponse.model_validate(task)
+    await complete(session, ctx, 201, response.model_dump(mode="json"))
+    await session.commit()
+    return response

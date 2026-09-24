@@ -447,3 +447,13 @@ async def get_visible_dependency_graph(
     if not await user_can_see_event(session, actor_id, dr_event_id):
         return None
     return await dependency_graph(session, dr_event_id)
+
+
+async def list_tasks(session: AsyncSession, dr_event_id: uuid.UUID) -> list[Task]:
+    """Live Tasks in plan order: `sort_order` (unset last), then creation."""
+    result = await session.execute(
+        select(Task)
+        .where(Task.dr_event_id == dr_event_id, Task.deleted_at.is_(None))
+        .order_by(Task.sort_order.asc().nulls_last(), Task.created_at, Task.id)
+    )
+    return list(result.scalars().all())

@@ -4,7 +4,13 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+#: schema_v1.sql `task_phase` / `task_status` (STATE_MACHINES.md §Task, D-252).
+TaskPhase = Literal["PRE_DR", "FAILOVER", "VALIDATION", "FAILBACK", "POST_DR"]
+TaskStatus = Literal[
+    "NOT_STARTED", "IN_PROGRESS", "BLOCKED", "READY_FOR_VALIDATION", "COMPLETED", "CANCELLED"
+]
 
 # Reasons and notes are `str | None` here on purpose: the service decides whether one is required
 # and rejects blank ones with an API_CONTRACT error code. A required schema field would fail as
@@ -21,8 +27,8 @@ class TaskResponse(BaseModel):
     parent_task_id: uuid.UUID | None
     title: str
     description: str | None
-    phase: str
-    status: str
+    phase: TaskPhase
+    status: TaskStatus
     owning_team_id: uuid.UUID
     current_assignee_user_id: uuid.UUID | None
     expected_duration_minutes: int | None
@@ -144,3 +150,30 @@ class DependencyGraphResponse(BaseModel):
     nodes: list[GraphNodeResponse]
     edges: list[GraphEdgeResponse]
     blocked_paths: list[BlockedPathResponse]
+
+
+class CreateTaskRequest(BaseModel):
+    """API_CONTRACT.md:157 -- the body carries the D-226 evidence fields and D-209's
+    `needs_specific_validation`, with their schema defaults."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1)
+    phase: TaskPhase
+    owning_team_id: uuid.UUID
+    dr_application_id: uuid.UUID | None = None
+    work_stream_id: uuid.UUID | None = None
+    parent_task_id: uuid.UUID | None = None
+    description: str | None = None
+    expected_duration_minutes: int | None = Field(default=None, ge=0)
+    sort_order: int | None = None
+    evidence_required: bool = True
+    evidence_min_count: int = Field(default=1, ge=0)
+    verification_note_required: bool = True
+    needs_specific_validation: bool = False
+
+
+class TaskListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tasks: list[TaskResponse]

@@ -507,6 +507,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dr-events/{event_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tasks Route */
+        get: operations["list_tasks_route_api_v1_dr_events__event_id__tasks_get"];
+        put?: never;
+        /** Post Create Task */
+        post: operations["post_create_task_api_v1_dr_events__event_id__tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dr-events/{event_id}/work-streams": {
         parameters: {
             query?: never;
@@ -1082,6 +1100,57 @@ export interface components {
              */
             successor_task_id: string;
         };
+        /**
+         * CreateTaskRequest
+         * @description API_CONTRACT.md:157 -- the body carries the D-226 evidence fields and D-209's
+         *     `needs_specific_validation`, with their schema defaults.
+         */
+        CreateTaskRequest: {
+            /** Description */
+            description?: string | null;
+            /** Dr Application Id */
+            dr_application_id?: string | null;
+            /**
+             * Evidence Min Count
+             * @default 1
+             */
+            evidence_min_count: number;
+            /**
+             * Evidence Required
+             * @default true
+             */
+            evidence_required: boolean;
+            /** Expected Duration Minutes */
+            expected_duration_minutes?: number | null;
+            /**
+             * Needs Specific Validation
+             * @default false
+             */
+            needs_specific_validation: boolean;
+            /**
+             * Owning Team Id
+             * Format: uuid
+             */
+            owning_team_id: string;
+            /** Parent Task Id */
+            parent_task_id?: string | null;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "PRE_DR" | "FAILOVER" | "VALIDATION" | "FAILBACK" | "POST_DR";
+            /** Sort Order */
+            sort_order?: number | null;
+            /** Title */
+            title: string;
+            /**
+             * Verification Note Required
+             * @default true
+             */
+            verification_note_required: boolean;
+            /** Work Stream Id */
+            work_stream_id?: string | null;
+        };
         /** CreateWorkStreamRequest */
         CreateWorkStreamRequest: {
             /** Description */
@@ -1608,6 +1677,11 @@ export interface components {
              */
             successor_task_id: string;
         };
+        /** TaskListResponse */
+        TaskListResponse: {
+            /** Tasks */
+            tasks: components["schemas"]["TaskResponse"][];
+        };
         /** TaskResponse */
         TaskResponse: {
             /** Completed At */
@@ -1648,16 +1722,22 @@ export interface components {
             owning_team_id: string;
             /** Parent Task Id */
             parent_task_id: string | null;
-            /** Phase */
-            phase: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "PRE_DR" | "FAILOVER" | "VALIDATION" | "FAILBACK" | "POST_DR";
             /** Source Import Id */
             source_import_id: string | null;
             /** Source Import Row */
             source_import_row: string | null;
             /** Started At */
             started_at: string | null;
-            /** Status */
-            status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "NOT_STARTED" | "IN_PROGRESS" | "BLOCKED" | "READY_FOR_VALIDATION" | "COMPLETED" | "CANCELLED";
             /** Title */
             title: string;
             /**
@@ -2815,6 +2895,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tasks_route_api_v1_dr_events__event_id__tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_task_api_v1_dr_events__event_id__tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
                 };
             };
             /** @description Validation Error */

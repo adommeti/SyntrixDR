@@ -28,23 +28,42 @@ class SelfValidationForbiddenError(AppError):
         super().__init__("You can't validate a Task you're assigned to or submitted for validation (D-209).")
 
 
-async def _application_id(session: AsyncSession, task: Task) -> uuid.UUID | None:
-    if task.dr_application_id is None:
+async def _application_id_of(session: AsyncSession, dr_application_id: uuid.UUID | None) -> uuid.UUID | None:
+    if dr_application_id is None:
         return None
-    dr_application = await get_dr_application(session, task.dr_application_id)
+    dr_application = await get_dr_application(session, dr_application_id)
     return dr_application.application_id if dr_application is not None else None
 
 
-async def _task_scopes(session: AsyncSession, task: Task) -> list[Scope]:
-    """Every scope a role could hold that covers this Task: the Owning Team (Manager's OWN_TEAM),
-    its Work Stream, and its Application."""
-    scopes = [Scope(owning_team_id=task.owning_team_id)]
-    if task.work_stream_id is not None:
-        scopes.append(Scope(scope_type="WORK_STREAM", scope_id=task.work_stream_id))
-    application_id = await _application_id(session, task)
+async def _application_id(session: AsyncSession, task: Task) -> uuid.UUID | None:
+    return await _application_id_of(session, task.dr_application_id)
+
+
+async def _scopes(
+    session: AsyncSession,
+    *,
+    owning_team_id: uuid.UUID,
+    work_stream_id: uuid.UUID | None,
+    dr_application_id: uuid.UUID | None,
+) -> list[Scope]:
+    """Every scope a role could hold that covers a Task with these ids: the Owning Team (Manager's
+    OWN_TEAM), its Work Stream, and its Application."""
+    scopes = [Scope(owning_team_id=owning_team_id)]
+    if work_stream_id is not None:
+        scopes.append(Scope(scope_type="WORK_STREAM", scope_id=work_stream_id))
+    application_id = await _application_id_of(session, dr_application_id)
     if application_id is not None:
         scopes.append(Scope(scope_type="APPLICATION", scope_id=application_id))
     return scopes
+
+
+async def _task_scopes(session: AsyncSession, task: Task) -> list[Scope]:
+    return await _scopes(
+        session,
+        owning_team_id=task.owning_team_id,
+        work_stream_id=task.work_stream_id,
+        dr_application_id=task.dr_application_id,
+    )
 
 
 def _grants_work_stream_lead(capability: Capability) -> bool:
@@ -162,3 +181,22 @@ async def actor_may_change_dependency(
     return await has_active_role(session, actor_id, "EXECUTOR") and await is_active_team_member(
         session, successor.owning_team_id, actor_id, at=at
     )
+
+
+async def actor_may_create_task(
+    session: AsyncSession,
+    actor_id: uuid.UUID,
+    *,
+    owning_team_id: uuid.UUID,
+    work_stream_id: uuid.UUID | None,
+    dr_application_id: uuid.UUID | None,
+) -> bool:
+    """Creating work is a planning act: CHANGE_TASK_METADATA's role grants in the new Task's scopes,
+    with no Executor path (BUILD-06.plan.md Risk #21)."""
+    scopes = await _scopes(
+        session,
+        owning_team_id=owning_team_id,
+        work_stream_id=work_stream_id,
+        dr_application_id=dr_application_id,
+    )
+    return await _can_in_any_scope(session, actor_id, Capability.CHANGE_TASK_METADATA, scopes)

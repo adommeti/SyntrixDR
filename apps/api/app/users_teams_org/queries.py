@@ -164,3 +164,18 @@ async def is_active_team_member(
 async def get_team(session: AsyncSession, team_id: uuid.UUID) -> Team | None:
     team = await session.get(Team, team_id)
     return team if team is not None and team.deleted_at is None else None
+
+
+async def list_active_team_member_ids(
+    session: AsyncSession, team_id: uuid.UUID, *, at: datetime
+) -> list[uuid.UUID]:
+    """Same "active" rule as `is_active_team_member`: live row, `at` inside the effective window."""
+    result = await session.execute(
+        select(TeamMembership.user_id).where(
+            TeamMembership.team_id == team_id,
+            TeamMembership.deleted_at.is_(None),
+            or_(TeamMembership.effective_from.is_(None), TeamMembership.effective_from <= at),
+            or_(TeamMembership.effective_to.is_(None), TeamMembership.effective_to >= at),
+        )
+    )
+    return list(result.scalars().all())

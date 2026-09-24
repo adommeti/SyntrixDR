@@ -30,3 +30,8 @@ async def is_work_stream_lead(session: AsyncSession, work_stream_id: uuid.UUID, 
         )
     )
     return result.first() is not None
+
+
+async def get_work_stream(session: AsyncSession, work_stream_id: uuid.UUID) -> WorkStream | None:
+    ws = await session.get(WorkStream, work_stream_id)
+    return ws if ws is not None and ws.deleted_at is None else None
