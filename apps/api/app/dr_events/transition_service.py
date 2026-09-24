@@ -14,7 +14,7 @@ from app.core.outbox import write_outbox
 from app.dr_events.commands import DrEventNotFoundError
 from app.dr_events.models import DrApplication, DrEvent, Override
 from app.dr_events.queries import has_non_terminal_children
-from app.dr_events.readiness_service import evaluate_readiness
+from app.dr_events.readiness_service import NON_OVERRIDABLE_KEYS, evaluate_readiness
 from app.plans_import.commands import capture_baseline_snapshot
 from app.users_teams_org.authorization import AuthorizationService, Capability
 
@@ -189,6 +189,9 @@ class DrEventTransitionService:
         if hard_stop_failures:
             if not override_reason or not override_reason.strip():
                 raise ReadinessHardStopError([r.key for r in hard_stop_failures])
+            unoverridable = [r.key for r in hard_stop_failures if r.key in NON_OVERRIDABLE_KEYS]
+            if unoverridable:
+                raise ReadinessHardStopError(unoverridable)
             for result in hard_stop_failures:
                 override = Override(
                     dr_event_id=event.id,

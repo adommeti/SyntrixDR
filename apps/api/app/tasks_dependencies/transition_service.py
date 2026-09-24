@@ -41,7 +41,7 @@ from app.tasks_dependencies.policies import (
     actor_may_validate_task,
     assert_not_self_validation,
 )
-from app.tasks_dependencies.queries import unsatisfied_hard_predecessors
+from app.tasks_dependencies.queries import Readiness, readiness
 from app.users_teams_org.authorization import AuthorizationRequiredError
 from app.validation_evidence.commands import close_task_validation, open_task_validation
 from app.validation_evidence.ports import EvidenceCounter
@@ -73,10 +73,11 @@ class DependencyNotSatisfiedError(AppError):
     code = "DEPENDENCY_NOT_SATISFIED"
     status_code = 409
 
-    def __init__(self, blocking: list[Task]) -> None:
+    def __init__(self, r: Readiness) -> None:
         super().__init__(
-            "A HARD predecessor is not COMPLETED. Supply an override_reason to start anyway.",
-            details={"blocking_task_ids": [str(t.id) for t in blocking]},
+            "A HARD predecessor isn't COMPLETED or a gating Milestone isn't ACHIEVED. "
+            "Supply an override_reason to start anyway.",
+            details={"blocking_task_ids": r.ids("TASK"), "blocking_milestone_ids": r.ids("MILESTONE")},
         )
 
 
@@ -188,7 +189,7 @@ async def _finish(
         session,
         aggregate_type="TASK",
         aggregate_id=task.id,
-        event_type="TaskStateChanged",
+        event_type="TaskChanged",  # D-234 V1 union (API_CONTRACT.md:274)
         payload=after,
         clock=clock,
         dr_event_id=task.dr_event_id,
@@ -215,12 +216,12 @@ class TaskTransitionService:
         _check_version(task, expected_version)
         _assert_legal("start", task)
 
-        blocking = await unsatisfied_hard_predecessors(session, task.id)
-        if blocking:
+        r = await readiness(session, task)
+        if r.blocking:
             reason = _clean(override_reason)
             if reason is None:
-                raise DependencyNotSatisfiedError(blocking)
-            cross_stream = any(p.work_stream_id != task.work_stream_id for p in blocking)
+                raise DependencyNotSatisfiedError(r)
+            cross_stream = any(g.work_stream_id != task.work_stream_id for g in r.blocking)
             if not await actor_may_override(session, actor_id, task, cross_stream=cross_stream):
                 raise AuthorizationRequiredError()
             await _record_task_override(
@@ -229,14 +230,29 @@ class TaskTransitionService:
                 actor_id=actor_id,
                 override_type="DEPENDENCY_OVERRIDE",
                 reason=reason,
-                metadata={"blocking_task_ids": [str(p.id) for p in blocking], "cross_stream": cross_stream},
+                metadata={
+                    "blocking_task_ids": r.ids("TASK"),
+                    "blocking_milestone_ids": r.ids("MILESTONE"),
+                    "cross_stream": cross_stream,
+                },
             )
 
         before = _snapshot(task)
         task.status = "IN_PROGRESS"
         task.started_at = clock.now()
+        # Invariant #2 "ADVISORY warn": start goes ahead, and the pending ADVISORY upstream is recorded
+        # on the audit row (BUILD-06.plan.md Risk #16).
         return await _finish(
-            session, task=task, actor_id=actor_id, before=before, action="TASK_STARTED", clock=clock
+            session,
+            task=task,
+            actor_id=actor_id,
+            before=before,
+            action="TASK_STARTED",
+            clock=clock,
+            extra={
+                "advisory_pending_task_ids": r.ids("TASK", advisory=True),
+                "advisory_pending_milestone_ids": r.ids("MILESTONE", advisory=True),
+            },
         )
 
     @staticmethod

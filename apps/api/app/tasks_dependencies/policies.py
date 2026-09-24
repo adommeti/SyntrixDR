@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.applications_catalog.queries import is_system_application_owner
 from app.core.errors import AppError
 from app.dr_events.queries import get_dr_application
+from app.policies_admin.queries import PolicyService
 from app.tasks_dependencies.models import Task
 from app.users_teams_org.authorization import AuthorizationService, Capability, Scope
 from app.users_teams_org.queries import has_active_role, is_active_team_member
@@ -119,3 +120,30 @@ async def actor_may_override(
         else Scope()
     )
     return await AuthorizationService.can(session, actor_id, Capability.OVERRIDE_WITHIN_WORK_STREAM, scope)
+
+
+async def actor_may_change_dependency(
+    session: AsyncSession, actor_id: uuid.UUID, successor: Task, *, at: datetime
+) -> bool:
+    """Adding or removing an edge into `successor` (BUILD-06.plan.md Risk #12). Judged on the successor
+    alone: an edge only constrains when its successor may start.
+
+    Policy `dependency.edit_requires` (schema_v2_reconciliation.sql:454), resolved at the successor's
+    scope: `SCOPED_ROLE` (default) = CHANGE_DEPENDENCIES in the successor's scope, or RBAC_MATRIX.md's
+    Executor cell "Team per policy" (EXECUTOR role and an active member of its Owning Team).
+    `COORDINATOR_ONLY` -- or any value this code doesn't recognise -- = Admin/Coordinator only."""
+    mode = await PolicyService.resolve(
+        session,
+        "dependency.edit_requires",
+        event_id=successor.dr_event_id,
+        work_stream_id=successor.work_stream_id,
+        application_id=await _application_id(session, successor),
+    )
+    if mode != "SCOPED_ROLE":
+        return await AuthorizationService.can(session, actor_id, Capability.CHANGE_DEPENDENCIES, Scope())
+    scopes = await _task_scopes(session, successor)
+    if await _can_in_any_scope(session, actor_id, Capability.CHANGE_DEPENDENCIES, scopes):
+        return True
+    return await has_active_role(session, actor_id, "EXECUTOR") and await is_active_team_member(
+        session, successor.owning_team_id, actor_id, at=at
+    )

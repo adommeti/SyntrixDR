@@ -422,6 +422,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dr-events/{event_id}/dependency-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dependency Graph Route */
+        get: operations["get_dependency_graph_route_api_v1_dr_events__event_id__dependency_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dr-events/{event_id}/imports/excel": {
         parameters: {
             query?: never;
@@ -605,6 +622,44 @@ export interface paths {
         /** Post Create Plan Version */
         post: operations["post_create_plan_version_api_v1_plans__plan_id__versions_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/task-dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Create Task Dependency */
+        post: operations["post_create_task_dependency_api_v1_task_dependencies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/task-dependencies/{dependency_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Task Dependency
+         * @description 200 with the removed edge, not 204: the idempotent replay (D-215, required here as the stricter
+         *     reading of "command POST") has to return a stored body (BUILD-06.plan.md Risk #15).
+         */
+        delete: operations["delete_task_dependency_api_v1_task_dependencies__dependency_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -870,6 +925,18 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** BlockedPathResponse */
+        BlockedPathResponse: {
+            /** Downstream Task Ids */
+            downstream_task_ids: string[];
+            /** Impacted Dr Application Ids */
+            impacted_dr_application_ids: string[];
+            /**
+             * Root Task Id
+             * Format: uuid
+             */
+            root_task_id: string;
+        };
         /** CancelEventRequest */
         CancelEventRequest: {
             /** Expected Version */
@@ -978,10 +1045,43 @@ export interface components {
             /** Version Type */
             version_type: string;
         };
+        /** CreateTaskDependencyRequest */
+        CreateTaskDependencyRequest: {
+            /**
+             * Predecessor Task Id
+             * Format: uuid
+             */
+            predecessor_task_id: string;
+            /**
+             * Strength
+             * @default HARD
+             * @enum {string}
+             */
+            strength: "HARD" | "ADVISORY";
+            /**
+             * Successor Task Id
+             * Format: uuid
+             */
+            successor_task_id: string;
+        };
         /** CsrfTokenResponse */
         CsrfTokenResponse: {
             /** Csrf Token */
             csrf_token: string;
+        };
+        /** DependencyGraphResponse */
+        DependencyGraphResponse: {
+            /** Blocked Paths */
+            blocked_paths: components["schemas"]["BlockedPathResponse"][];
+            /**
+             * Dr Event Id
+             * Format: uuid
+             */
+            dr_event_id: string;
+            /** Edges */
+            edges: components["schemas"]["GraphEdgeResponse"][];
+            /** Nodes */
+            nodes: components["schemas"]["GraphNodeResponse"][];
         };
         /** DrEventListResponse */
         DrEventListResponse: {
@@ -1050,6 +1150,63 @@ export interface components {
         ExpectedVersionRequest: {
             /** Expected Version */
             expected_version: number;
+        };
+        /** GraphEdgeResponse */
+        GraphEdgeResponse: {
+            /**
+             * From Id
+             * Format: uuid
+             */
+            from_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "TASK_DEPENDENCY" | "MILESTONE_GATE";
+            /**
+             * Strength
+             * @enum {string}
+             */
+            strength: "HARD" | "ADVISORY";
+            /**
+             * To Id
+             * Format: uuid
+             */
+            to_id: string;
+        };
+        /** GraphNodeResponse */
+        GraphNodeResponse: {
+            /** Active Blocker Count */
+            active_blocker_count: number;
+            /** Advisory Pending */
+            advisory_pending: string[];
+            /** Blocked By */
+            blocked_by: string[];
+            /** Dr Application Id */
+            dr_application_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "TASK" | "MILESTONE";
+            /** Label */
+            label: string;
+            /** Ready */
+            ready: boolean | null;
+            /** Status */
+            status: string;
+            /** Work Stream Id */
+            work_stream_id: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1374,6 +1531,45 @@ export interface components {
             expected_version: number;
             /** Verification Note */
             verification_note?: string | null;
+        };
+        /** TaskDependencyResponse */
+        TaskDependencyResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By User Id
+             * Format: uuid
+             */
+            created_by_user_id: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Dependency Type */
+            dependency_type: string;
+            /**
+             * Dr Event Id
+             * Format: uuid
+             */
+            dr_event_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Predecessor Task Id
+             * Format: uuid
+             */
+            predecessor_task_id: string;
+            /** Strength */
+            strength: string;
+            /**
+             * Successor Task Id
+             * Format: uuid
+             */
+            successor_task_id: string;
         };
         /** TaskResponse */
         TaskResponse: {
@@ -2383,6 +2579,37 @@ export interface operations {
             };
         };
     };
+    get_dependency_graph_route_api_v1_dr_events__event_id__dependency_graph_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_upload_import_excel_api_v1_dr_events__event_id__imports_excel_post: {
         parameters: {
             query?: never;
@@ -2733,6 +2960,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_task_dependency_api_v1_task_dependencies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTaskDependencyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDependencyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_task_dependency_api_v1_task_dependencies__dependency_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dependency_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDependencyResponse"];
                 };
             };
             /** @description Validation Error */

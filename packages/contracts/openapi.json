@@ -228,6 +228,39 @@
         "title": "BlockTaskRequest",
         "type": "object"
       },
+      "BlockedPathResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "downstream_task_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Downstream Task Ids",
+            "type": "array"
+          },
+          "impacted_dr_application_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Impacted Dr Application Ids",
+            "type": "array"
+          },
+          "root_task_id": {
+            "format": "uuid",
+            "title": "Root Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root_task_id",
+          "downstream_task_ids",
+          "impacted_dr_application_ids"
+        ],
+        "title": "BlockedPathResponse",
+        "type": "object"
+      },
       "CancelEventRequest": {
         "additionalProperties": false,
         "properties": {
@@ -571,6 +604,36 @@
         "title": "CreatePlanVersionRequest",
         "type": "object"
       },
+      "CreateTaskDependencyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "predecessor_task_id": {
+            "format": "uuid",
+            "title": "Predecessor Task Id",
+            "type": "string"
+          },
+          "strength": {
+            "default": "HARD",
+            "enum": [
+              "HARD",
+              "ADVISORY"
+            ],
+            "title": "Strength",
+            "type": "string"
+          },
+          "successor_task_id": {
+            "format": "uuid",
+            "title": "Successor Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "predecessor_task_id",
+          "successor_task_id"
+        ],
+        "title": "CreateTaskDependencyRequest",
+        "type": "object"
+      },
       "CsrfTokenResponse": {
         "additionalProperties": false,
         "properties": {
@@ -583,6 +646,45 @@
           "csrf_token"
         ],
         "title": "CsrfTokenResponse",
+        "type": "object"
+      },
+      "DependencyGraphResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked_paths": {
+            "items": {
+              "$ref": "#/components/schemas/BlockedPathResponse"
+            },
+            "title": "Blocked Paths",
+            "type": "array"
+          },
+          "dr_event_id": {
+            "format": "uuid",
+            "title": "Dr Event Id",
+            "type": "string"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdgeResponse"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeResponse"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dr_event_id",
+          "nodes",
+          "edges",
+          "blocked_paths"
+        ],
+        "title": "DependencyGraphResponse",
         "type": "object"
       },
       "DrEventListResponse": {
@@ -849,6 +951,146 @@
           "expected_version"
         ],
         "title": "ExpectedVersionRequest",
+        "type": "object"
+      },
+      "GraphEdgeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "from_id": {
+            "format": "uuid",
+            "title": "From Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "TASK_DEPENDENCY",
+              "MILESTONE_GATE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "strength": {
+            "enum": [
+              "HARD",
+              "ADVISORY"
+            ],
+            "title": "Strength",
+            "type": "string"
+          },
+          "to_id": {
+            "format": "uuid",
+            "title": "To Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "from_id",
+          "to_id",
+          "strength"
+        ],
+        "title": "GraphEdgeResponse",
+        "type": "object"
+      },
+      "GraphNodeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "active_blocker_count": {
+            "title": "Active Blocker Count",
+            "type": "integer"
+          },
+          "advisory_pending": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Advisory Pending",
+            "type": "array"
+          },
+          "blocked_by": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Blocked By",
+            "type": "array"
+          },
+          "dr_application_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dr Application Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "TASK",
+              "MILESTONE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "ready": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "work_stream_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Stream Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "status",
+          "dr_application_id",
+          "work_stream_id",
+          "ready",
+          "blocked_by",
+          "advisory_pending",
+          "active_blocker_count"
+        ],
+        "title": "GraphNodeResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1756,6 +1998,74 @@
           "expected_version"
         ],
         "title": "SubmitValidationRequest",
+        "type": "object"
+      },
+      "TaskDependencyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "format": "uuid",
+            "title": "Created By User Id",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "dependency_type": {
+            "title": "Dependency Type",
+            "type": "string"
+          },
+          "dr_event_id": {
+            "format": "uuid",
+            "title": "Dr Event Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "predecessor_task_id": {
+            "format": "uuid",
+            "title": "Predecessor Task Id",
+            "type": "string"
+          },
+          "strength": {
+            "title": "Strength",
+            "type": "string"
+          },
+          "successor_task_id": {
+            "format": "uuid",
+            "title": "Successor Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "dr_event_id",
+          "predecessor_task_id",
+          "successor_task_id",
+          "dependency_type",
+          "strength",
+          "created_by_user_id",
+          "created_at",
+          "deleted_at"
+        ],
+        "title": "TaskDependencyResponse",
         "type": "object"
       },
       "TaskResponse": {
@@ -3467,6 +3777,49 @@
         ]
       }
     },
+    "/api/v1/dr-events/{event_id}/dependency-graph": {
+      "get": {
+        "operationId": "get_dependency_graph_route_api_v1_dr_events__event_id__dependency_graph_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyGraphResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Dependency Graph Route",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
     "/api/v1/dr-events/{event_id}/imports/excel": {
       "post": {
         "operationId": "post_upload_import_excel_api_v1_dr_events__event_id__imports_excel_post",
@@ -3947,6 +4300,91 @@
         "summary": "Post Create Plan Version",
         "tags": [
           "plans_import"
+        ]
+      }
+    },
+    "/api/v1/task-dependencies": {
+      "post": {
+        "operationId": "post_create_task_dependency_api_v1_task_dependencies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskDependencyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDependencyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create Task Dependency",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
+    "/api/v1/task-dependencies/{dependency_id}": {
+      "delete": {
+        "description": "200 with the removed edge, not 204: the idempotent replay (D-215, required here as the stricter\nreading of \"command POST\") has to return a stored body (BUILD-06.plan.md Risk #15).",
+        "operationId": "delete_task_dependency_api_v1_task_dependencies__dependency_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dependency_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dependency Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDependencyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Task Dependency",
+        "tags": [
+          "tasks_dependencies"
         ]
       }
     },

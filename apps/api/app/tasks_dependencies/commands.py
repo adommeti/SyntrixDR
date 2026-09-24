@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
@@ -157,3 +157,12 @@ async def create_draft_dependency(
         },
     )
     return dependency
+
+
+async def lock_event_dependency_graph(session: AsyncSession, dr_event_id: uuid.UUID) -> None:
+    """Serializes every dependency write in one Event until the transaction ends (ADR-036's advisory-lock
+    pattern). Without it, two concurrent inserts A->B and B->A would each pass the cycle check against a
+    graph that doesn't yet contain the other, and both would commit a cycle."""
+    await session.execute(
+        select(func.pg_advisory_xact_lock(func.hashtextextended(f"dependency_graph:{dr_event_id}", 0)))
+    )

@@ -7,16 +7,21 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.core.idempotency import complete, require_idempotency_key
+from app.dr_events.commands import DrEventNotFoundError
 from app.identity_auth.dependencies import ClockDep, CurrentSession, DbSession, RequireCsrfDependency
 from app.tasks_dependencies.commands import TaskNotFoundError
-from app.tasks_dependencies.models import Task
-from app.tasks_dependencies.queries import get_visible_task
+from app.tasks_dependencies.dependency_service import DependencyService
+from app.tasks_dependencies.models import Task, TaskDependency
+from app.tasks_dependencies.queries import get_visible_dependency_graph, get_visible_task
 from app.tasks_dependencies.schemas import (
     BlockTaskRequest,
     CancelTaskRequest,
+    CreateTaskDependencyRequest,
+    DependencyGraphResponse,
     ResumeTaskRequest,
     StartTaskRequest,
     SubmitValidationRequest,
+    TaskDependencyResponse,
     TaskResponse,
     ValidateTaskRequest,
 )
@@ -208,3 +213,98 @@ async def post_cancel_task(
             clock=clock,
         ),
     )
+
+
+# --------------------------------------------------------------------------------------------
+# Dependencies (API_CONTRACT.md:168-174)
+# --------------------------------------------------------------------------------------------
+
+
+async def _run_dependency_command(
+    request: Request,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+    status_code: int,
+    call: Callable[[], Awaitable[TaskDependency]],
+) -> TaskDependencyResponse | JSONResponse:
+    ctx = await require_idempotency_key(request, session, session_data.user_id, clock)
+    if ctx.is_replay:
+        assert ctx.stored_status is not None
+        return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
+
+    edge = await call()
+    response = TaskDependencyResponse.model_validate(edge)
+    await complete(session, ctx, status_code, response.model_dump(mode="json"))
+    await session.commit()
+    return response
+
+
+# `response_model=None` lets an idempotent replay return the stored JSONResponse; `responses=` still
+# documents the body in the contract, which nothing else references (no GET for a single edge).
+@router.post(
+    "/task-dependencies",
+    status_code=201,
+    dependencies=[RequireCsrfDependency],
+    response_model=None,
+    responses={201: {"model": TaskDependencyResponse}},
+)
+async def post_create_task_dependency(
+    request: Request,
+    body: CreateTaskDependencyRequest,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+) -> TaskDependencyResponse | JSONResponse:
+    return await _run_dependency_command(
+        request,
+        session,
+        session_data,
+        clock,
+        201,
+        lambda: DependencyService.add_task_dependency(
+            session,
+            actor_id=session_data.user_id,
+            predecessor_task_id=body.predecessor_task_id,
+            successor_task_id=body.successor_task_id,
+            strength=body.strength,
+            clock=clock,
+        ),
+    )
+
+
+@router.delete(
+    "/task-dependencies/{dependency_id}",
+    dependencies=[RequireCsrfDependency],
+    response_model=None,
+    responses={200: {"model": TaskDependencyResponse}},
+)
+async def delete_task_dependency(
+    dependency_id: uuid.UUID,
+    request: Request,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+) -> TaskDependencyResponse | JSONResponse:
+    """200 with the removed edge, not 204: the idempotent replay (D-215, required here as the stricter
+    reading of "command POST") has to return a stored body (BUILD-06.plan.md Risk #15)."""
+    return await _run_dependency_command(
+        request,
+        session,
+        session_data,
+        clock,
+        200,
+        lambda: DependencyService.remove_task_dependency(
+            session, actor_id=session_data.user_id, dependency_id=dependency_id, clock=clock
+        ),
+    )
+
+
+@router.get("/dr-events/{event_id}/dependency-graph")
+async def get_dependency_graph_route(
+    event_id: uuid.UUID, session: DbSession, session_data: CurrentSession
+) -> DependencyGraphResponse:
+    graph = await get_visible_dependency_graph(session, session_data.user_id, event_id)
+    if graph is None:
+        raise DrEventNotFoundError()
+    return DependencyGraphResponse.model_validate(graph)

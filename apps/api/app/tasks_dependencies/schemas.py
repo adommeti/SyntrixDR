@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -79,3 +80,67 @@ class CancelTaskRequest(BaseModel):
 
     expected_version: int
     reason: str | None = None
+
+
+class CreateTaskDependencyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    predecessor_task_id: uuid.UUID
+    successor_task_id: uuid.UUID
+    strength: Literal["HARD", "ADVISORY"] = "HARD"
+
+
+class TaskDependencyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: uuid.UUID
+    dr_event_id: uuid.UUID
+    predecessor_task_id: uuid.UUID
+    successor_task_id: uuid.UUID
+    dependency_type: str
+    strength: str
+    created_by_user_id: uuid.UUID
+    created_at: datetime
+    deleted_at: datetime | None
+
+
+class GraphNodeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: uuid.UUID
+    kind: Literal["TASK", "MILESTONE"]
+    label: str
+    status: str
+    dr_application_id: uuid.UUID | None
+    work_stream_id: uuid.UUID | None
+    ready: bool | None
+    blocked_by: list[uuid.UUID]
+    advisory_pending: list[uuid.UUID]
+    active_blocker_count: int
+
+
+class GraphEdgeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: uuid.UUID
+    kind: Literal["TASK_DEPENDENCY", "MILESTONE_GATE"]
+    from_id: uuid.UUID
+    to_id: uuid.UUID
+    strength: Literal["HARD", "ADVISORY"]
+
+
+class BlockedPathResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    root_task_id: uuid.UUID
+    downstream_task_ids: list[uuid.UUID]
+    impacted_dr_application_ids: list[uuid.UUID]
+
+
+class DependencyGraphResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    dr_event_id: uuid.UUID
+    nodes: list[GraphNodeResponse]
+    edges: list[GraphEdgeResponse]
+    blocked_paths: list[BlockedPathResponse]

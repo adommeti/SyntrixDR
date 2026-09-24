@@ -21,3 +21,21 @@ async def count_active_blockers(session: AsyncSession, task_id: uuid.UUID) -> in
         )
     )
     return result.scalar_one()
+
+
+async def count_active_blockers_by_task(
+    session: AsyncSession, task_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """`count_active_blockers` for many Tasks in one query; Tasks with none are absent."""
+    if not task_ids:
+        return {}
+    rows = await session.execute(
+        select(Blocker.task_id, func.count())
+        .where(
+            Blocker.task_id.in_(task_ids),
+            Blocker.deleted_at.is_(None),
+            Blocker.status != INACTIVE_BLOCKER_STATUS,
+        )
+        .group_by(Blocker.task_id)
+    )
+    return {task_id: n for task_id, n in rows}
