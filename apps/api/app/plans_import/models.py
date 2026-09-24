@@ -24,6 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.applications_catalog.models import Application
 from app.core.database import Base
 from app.core.external_refs import milestones_table
+from app.core.target_types import target_type_enum
 from app.tasks_dependencies.models import Task, TaskDependency
 
 # `Application`/`Task`/`TaskDependency` already have real ORM-mapped classes (unlike
@@ -219,27 +220,7 @@ class NeedsReviewItem(Base):
         PgUUID(as_uuid=True), ForeignKey("dr_events.id", ondelete="RESTRICT"), nullable=True
     )
     target_type: Mapped[str] = mapped_column(
-        Enum(
-            "DR_EVENT",
-            "DR_APPLICATION",
-            "APPLICATION",
-            "WORK_STREAM",
-            "TASK",
-            "TASK_DEPENDENCY",
-            "MILESTONE",
-            "BLOCKER",
-            "ISSUE_FINDING",
-            "VALIDATION",
-            "IMPORT_JOB",
-            "PLAN",
-            "PLAN_VERSION",
-            "REPORT",
-            "DOCUMENT",
-            "ALERT",
-            name="target_type",
-            native_enum=True,
-            create_type=False,
-        ),
+        target_type_enum,
         nullable=False,
     )
     target_id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)

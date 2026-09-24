@@ -22,6 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.applications_catalog.models import Application, Tier
 from app.core.database import Base
+from app.core.target_types import target_type_enum
 from app.users_teams_org.models import User
 
 # `.claude/rules/python-api.md`'s cross-module rule ("import commands.py/queries.py, never
@@ -264,27 +265,7 @@ class Override(Base):
         PgUUID(as_uuid=True), ForeignKey("dr_events.id", ondelete="RESTRICT"), nullable=False
     )
     target_type: Mapped[str] = mapped_column(
-        Enum(
-            "DR_EVENT",
-            "DR_APPLICATION",
-            "APPLICATION",
-            "WORK_STREAM",
-            "TASK",
-            "TASK_DEPENDENCY",
-            "MILESTONE",
-            "BLOCKER",
-            "ISSUE_FINDING",
-            "VALIDATION",
-            "IMPORT_JOB",
-            "PLAN",
-            "PLAN_VERSION",
-            "REPORT",
-            "DOCUMENT",
-            "ALERT",
-            name="target_type",
-            native_enum=True,
-            create_type=False,
-        ),
+        target_type_enum,
         nullable=False,
     )
     target_id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
