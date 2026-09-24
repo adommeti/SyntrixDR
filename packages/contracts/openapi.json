@@ -634,6 +634,81 @@
         "title": "CreateTaskDependencyRequest",
         "type": "object"
       },
+      "CreateWorkStreamRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "lead_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead User Id"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "owning_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owning Team Id"
+          },
+          "sequence_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Order"
+          },
+          "stream_type": {
+            "default": "CUSTOM",
+            "enum": [
+              "NETWORK",
+              "STORAGE",
+              "DATABASE",
+              "APPLICATIONS",
+              "MONITORING",
+              "VALIDATION",
+              "CUSTOM"
+            ],
+            "title": "Stream Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateWorkStreamRequest",
+        "type": "object"
+      },
       "CsrfTokenResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2733,6 +2808,130 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WorkStreamListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "work_streams": {
+            "items": {
+              "$ref": "#/components/schemas/WorkStreamResponse"
+            },
+            "title": "Work Streams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "work_streams"
+        ],
+        "title": "WorkStreamListResponse",
+        "type": "object"
+      },
+      "WorkStreamResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dr_event_id": {
+            "format": "uuid",
+            "title": "Dr Event Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lead_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead User Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owning_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owning Team Id"
+          },
+          "sequence_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Order"
+          },
+          "stream_type": {
+            "enum": [
+              "NETWORK",
+              "STORAGE",
+              "DATABASE",
+              "APPLICATIONS",
+              "MONITORING",
+              "VALIDATION",
+              "CUSTOM"
+            ],
+            "title": "Stream Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "dr_event_id",
+          "name",
+          "description",
+          "stream_type",
+          "lead_user_id",
+          "owning_team_id",
+          "sequence_order",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WorkStreamResponse",
+        "type": "object"
       }
     }
   },
@@ -4011,6 +4210,100 @@
         "summary": "Post Start Failover",
         "tags": [
           "dr_events"
+        ]
+      }
+    },
+    "/api/v1/dr-events/{event_id}/work-streams": {
+      "get": {
+        "operationId": "list_work_streams_route_api_v1_dr_events__event_id__work_streams_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkStreamListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Work Streams Route",
+        "tags": [
+          "work_streams"
+        ]
+      },
+      "post": {
+        "operationId": "post_create_work_stream_api_v1_dr_events__event_id__work_streams_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkStreamRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkStreamResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create Work Stream",
+        "tags": [
+          "work_streams"
         ]
       }
     },

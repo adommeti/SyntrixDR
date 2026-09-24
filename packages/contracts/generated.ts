@@ -507,6 +507,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dr-events/{event_id}/work-streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Work Streams Route */
+        get: operations["list_work_streams_route_api_v1_dr_events__event_id__work_streams_get"];
+        put?: never;
+        /** Post Create Work Stream */
+        post: operations["post_create_work_stream_api_v1_dr_events__event_id__work_streams_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -1063,6 +1081,25 @@ export interface components {
              * Format: uuid
              */
             successor_task_id: string;
+        };
+        /** CreateWorkStreamRequest */
+        CreateWorkStreamRequest: {
+            /** Description */
+            description?: string | null;
+            /** Lead User Id */
+            lead_user_id?: string | null;
+            /** Name */
+            name: string;
+            /** Owning Team Id */
+            owning_team_id?: string | null;
+            /** Sequence Order */
+            sequence_order?: number | null;
+            /**
+             * Stream Type
+             * @default CUSTOM
+             * @enum {string}
+             */
+            stream_type: "NETWORK" | "STORAGE" | "DATABASE" | "APPLICATIONS" | "MONITORING" | "VALIDATION" | "CUSTOM";
         };
         /** CsrfTokenResponse */
         CsrfTokenResponse: {
@@ -1778,6 +1815,51 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WorkStreamListResponse */
+        WorkStreamListResponse: {
+            /** Work Streams */
+            work_streams: components["schemas"]["WorkStreamResponse"][];
+        };
+        /** WorkStreamResponse */
+        WorkStreamResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Dr Event Id
+             * Format: uuid
+             */
+            dr_event_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lead User Id */
+            lead_user_id: string | null;
+            /** Name */
+            name: string;
+            /** Owning Team Id */
+            owning_team_id: string | null;
+            /** Sequence Order */
+            sequence_order: number | null;
+            /**
+             * Stream Type
+             * @enum {string}
+             */
+            stream_type: "NETWORK" | "STORAGE" | "DATABASE" | "APPLICATIONS" | "MONITORING" | "VALIDATION" | "CUSTOM";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
         };
     };
     responses: never;
@@ -2733,6 +2815,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_work_streams_route_api_v1_dr_events__event_id__work_streams_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkStreamListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_work_stream_api_v1_dr_events__event_id__work_streams_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkStreamRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkStreamResponse"];
                 };
             };
             /** @description Validation Error */
