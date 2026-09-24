@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from typing import Protocol
+from typing import Annotated, Protocol
 
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -25,3 +26,11 @@ class NoEvidenceItemsYet:
     async def count_acceptable_for_task(self, session: AsyncSession, task_id: uuid.UUID) -> int:
         _ = (session, task_id)
         return 0
+
+
+async def get_evidence_counter() -> EvidenceCounter:
+    """FastAPI dependency -- the one place BUILD-09 swaps in the real counter."""
+    return NoEvidenceItemsYet()
+
+
+EvidenceCounterDep = Annotated[EvidenceCounter, Depends(get_evidence_counter)]

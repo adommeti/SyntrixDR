@@ -2,8 +2,8 @@
 lifecycle table, its guards, D-209's validator rule, D-226's evidence/note guard, object-level
 authorization (404 vs 403), optimistic concurrency, and audit + outbox side effects.
 
-Route-level concerns (Idempotency-Key, 401, replay, the error envelope) live in
-`test_task_routes.py`.
+The HTTP section at the end covers the route-level concerns (Idempotency-Key, replay, 401, CSRF,
+the error envelope) -- in this file because tests.md requires every transition test file to.
 
 Test worlds are seeded directly with SQL where a command that would normally produce the state
 doesn't exist yet: Task creation/assignment (a later session / BUILD-07) and D-222 participant
@@ -15,16 +15,25 @@ from __future__ import annotations
 import uuid
 from collections import Counter
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.clock import FakeClock
-from app.core.errors import AppError
+from app.core.clock import Clock, FakeClock
+from app.core.database import get_request_session
+from app.core.errors import AppError, app_error_handler
 from app.dr_events.participants import enrol_participant
+from app.identity_auth.dependencies import get_clock, get_session_store
+from app.identity_auth.models import SessionRecord
+from app.identity_auth.session_store import RedisSessionStore
 from app.tasks_dependencies.commands import create_draft_task
+from app.tasks_dependencies.routes import router as tasks_router
 from app.tasks_dependencies.transition_service import TaskTransitionService
 from app.users_teams_org.models import RoleAssignment
 from app.validation_evidence.ports import NoEvidenceItemsYet
@@ -1146,3 +1155,329 @@ async def test_version_check_reads_the_locked_row_not_a_cached_copy(
     )
 
     assert (started.status, started.version) == ("IN_PROGRESS", 3)
+
+
+# --------------------------------------------------------------------------------------------
+# HTTP: Idempotency-Key (D-215), replay, 401, CSRF, the API_CONTRACT error envelope
+# --------------------------------------------------------------------------------------------
+
+
+def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> FastAPI:
+    app = FastAPI()
+    app.add_exception_handler(AppError, app_error_handler)
+    app.include_router(tasks_router)
+
+    async def _session_override():  # noqa: ANN202
+        yield session
+
+    async def _clock_override() -> Clock:
+        return clock
+
+    app.state.session_store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
+    app.dependency_overrides[get_request_session] = _session_override
+    app.dependency_overrides[get_clock] = _clock_override
+    app.dependency_overrides[get_session_store] = lambda: app.state.session_store
+    return app
+
+
+async def login(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock, user_id: uuid.UUID
+) -> tuple[str, str]:
+    store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
+    session_id = uuid.uuid4()
+    data = await store.create(session_id, user_id, "LOCAL", clock)
+    session.add(
+        SessionRecord(
+            id=session_id,
+            user_id=user_id,
+            identity_type="LOCAL",
+            created_at=clock.now(),
+            last_seen_at=clock.now(),
+            absolute_expires_at=clock.now() + timedelta(hours=8),
+            idle_expires_at=clock.now() + timedelta(minutes=30),
+        )
+    )
+    await session.flush()
+    return str(session_id), data.csrf_token
+
+
+def http(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> AsyncClient:
+    return AsyncClient(
+        transport=ASGITransport(app=build_app(session, redis_client, clock)), base_url="http://t"
+    )
+
+
+def headers(csrf_token: str, key: str | None = None) -> dict[str, str]:
+    return {"X-CSRF-Token": csrf_token, "Idempotency-Key": key or str(uuid.uuid4())}
+
+
+#: path segment -> a body that's valid for that command
+BODIES: dict[str, dict[str, Any]] = {
+    "start": {"expected_version": 1},
+    "block": {"expected_version": 1, "reason": "Waiting on DNS"},
+    "resume": {"expected_version": 1},
+    "submit-validation": {"expected_version": 1, "verification_note": "Checked"},
+    "validate": {"expected_version": 1, "approve": True},
+    "cancel": {"expected_version": 1, "reason": "Descoped"},
+}
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("path", list(BODIES))
+async def test_every_task_command_requires_an_idempotency_key(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock, path: str
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w)
+    sid, csrf = await login(session, redis_client, clock, w.admin_id)
+
+    async with http(session, redis_client, clock) as c:
+        response = await c.post(
+            f"/api/v1/tasks/{task_id}/{path}",
+            cookies={"drcc_session": sid},
+            headers={"X-CSRF-Token": csrf},
+            json=BODIES[path],
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
+    assert (await task_row(session, task_id)).version == 1
+    await redis_client.delete(f"drcc:session:{sid}")
+
+
+@pytest.mark.api
+async def test_block_replay_returns_the_original_response_and_repeats_nothing(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status="IN_PROGRESS")
+    sid, csrf = await login(session, redis_client, clock, w.executor_id)
+    replay_headers = headers(csrf)
+
+    async with http(session, redis_client, clock) as c:
+        url = f"/api/v1/tasks/{task_id}/block"
+        first = await c.post(url, cookies={"drcc_session": sid}, headers=replay_headers, json=BODIES["block"])
+        replay = await c.post(
+            url, cookies={"drcc_session": sid}, headers=replay_headers, json=BODIES["block"]
+        )
+
+    assert first.status_code == 200
+    assert (first.json()["status"], first.json()["version"]) == ("BLOCKED", 2)
+    assert replay.status_code == 200
+    assert replay.json() == first.json()
+    assert await count(session, "SELECT count(*) FROM blockers WHERE task_id = :t", t=task_id) == 1
+    assert Counter(await audit_actions(session, task_id))["TASK_BLOCKED"] == 1
+    assert await outbox_types(session, task_id) == ["TaskStateChanged"]
+    await redis_client.delete(f"drcc:session:{sid}")
+
+
+@pytest.mark.api
+async def test_submit_validation_replay_opens_only_one_validation(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status="IN_PROGRESS")
+    sid, csrf = await login(session, redis_client, clock, w.executor_id)
+    replay_headers = headers(csrf)
+
+    async with http(session, redis_client, clock) as c:
+        url = f"/api/v1/tasks/{task_id}/submit-validation"
+        body = BODIES["submit-validation"]
+        first = await c.post(url, cookies={"drcc_session": sid}, headers=replay_headers, json=body)
+        replay = await c.post(url, cookies={"drcc_session": sid}, headers=replay_headers, json=body)
+
+    assert first.status_code == replay.status_code == 200
+    assert replay.json() == first.json()
+    assert await count(session, "SELECT count(*) FROM validations WHERE target_id = :t", t=task_id) == 1
+    await redis_client.delete(f"drcc:session:{sid}")
+
+
+@pytest.mark.api
+async def test_reusing_a_key_with_a_different_body_is_rejected(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status="IN_PROGRESS")
+    sid, csrf = await login(session, redis_client, clock, w.executor_id)
+    reused = headers(csrf)
+
+    async with http(session, redis_client, clock) as c:
+        url = f"/api/v1/tasks/{task_id}/block"
+        await c.post(url, cookies={"drcc_session": sid}, headers=reused, json=BODIES["block"])
+        second = await c.post(
+            url,
+            cookies={"drcc_session": sid},
+            headers=reused,
+            json={"expected_version": 1, "reason": "Other"},
+        )
+
+    assert second.status_code == 422
+    assert second.json()["error"]["code"] == "IDEMPOTENCY_REQUEST_MISMATCH"
+    await redis_client.delete(f"drcc:session:{sid}")
+
+
+@pytest.mark.api
+@pytest.mark.auth
+async def test_unauthenticated_command_is_401(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w)
+
+    async with http(session, redis_client, clock) as c:
+        response = await c.post(
+            f"/api/v1/tasks/{task_id}/start",
+            headers={"Idempotency-Key": str(uuid.uuid4())},
+            json=BODIES["start"],
+        )
+
+    assert response.status_code == 401
+    assert (await task_row(session, task_id)).version == 1
+
+
+@pytest.mark.api
+@pytest.mark.auth
+async def test_command_without_csrf_token_is_rejected(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w)
+    sid, _csrf = await login(session, redis_client, clock, w.admin_id)
+
+    async with http(session, redis_client, clock) as c:
+        response = await c.post(
+            f"/api/v1/tasks/{task_id}/start",
+            cookies={"drcc_session": sid},
+            headers={"Idempotency-Key": str(uuid.uuid4())},
+            json=BODIES["start"],
+        )
+
+    assert response.status_code == 403
+    assert (await task_row(session, task_id)).version == 1
+    await redis_client.delete(f"drcc:session:{sid}")
+
+
+@pytest.mark.api
+async def test_domain_errors_render_the_api_contract_envelope(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status="COMPLETED")
+    sid, csrf = await login(session, redis_client, clock, w.admin_id)
+
+    async with http(session, redis_client, clock) as c:
+        response = await c.post(
+            f"/api/v1/tasks/{task_id}/start",
+            cookies={"drcc_session": sid},
+            headers=headers(csrf),
+            json=BODIES["start"],
+        )
+
+    assert response.status_code == 409
+    error = response.json()["error"]
+    assert error["code"] == "INVALID_TRANSITION"
+    assert error["correlation_id"]
+    assert "Traceback" not in response.text
+    await redis_client.delete(f"drcc:session:{sid}")
+
+
+@pytest.mark.api
+async def test_default_evidence_counter_honestly_reports_none_over_http(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """The route's real dependency (not a test double) is `NoEvidenceItemsYet` until BUILD-09."""
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status="IN_PROGRESS", evidence_required=True)
+    sid, csrf = await login(session, redis_client, clock, w.executor_id)
+
+    async with http(session, redis_client, clock) as c:
+        response = await c.post(
+            f"/api/v1/tasks/{task_id}/submit-validation",
+            cookies={"drcc_session": sid},
+            headers=headers(csrf),
+            json=BODIES["submit-validation"],
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "EVIDENCE_REQUIRED"
+    assert response.json()["error"]["details"]["evidence_found"] == 0
+    await redis_client.delete(f"drcc:session:{sid}")
+
+
+@pytest.mark.api
+async def test_get_task_is_visible_to_participants_and_404_to_everyone_else(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w)
+    member_sid, _ = await login(session, redis_client, clock, w.executor_id)
+    stranger_sid, _ = await login(session, redis_client, clock, w.stranger_id)
+
+    async with http(session, redis_client, clock) as c:
+        seen = await c.get(f"/api/v1/tasks/{task_id}", cookies={"drcc_session": member_sid})
+        hidden = await c.get(f"/api/v1/tasks/{task_id}", cookies={"drcc_session": stranger_sid})
+        missing = await c.get(f"/api/v1/tasks/{uuid.uuid4()}", cookies={"drcc_session": member_sid})
+
+    assert seen.status_code == 200
+    body = seen.json()
+    assert (body["id"], body["status"], body["owning_team_id"]) == (
+        str(task_id),
+        "NOT_STARTED",
+        str(w.team_id),
+    )
+    assert (body["evidence_required"], body["evidence_min_count"], body["verification_note_required"]) == (
+        False,
+        1,
+        True,
+    )
+    assert hidden.status_code == missing.status_code == 404
+    assert hidden.json()["error"]["code"] == missing.json()["error"]["code"] == "TASK_NOT_FOUND"
+    for sid in (member_sid, stranger_sid):
+        await redis_client.delete(f"drcc:session:{sid}")
+
+
+@pytest.mark.api
+async def test_full_task_lifecycle_over_http(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """Executor starts, blocks, resumes, submits; a System Owner validates. The Blocker is closed by
+    SQL in the middle, standing in for BUILD-08's `blockers/{id}/verify`."""
+    w = await build_world(session)
+    task_id = await seed_task(session, w)
+    exec_sid, exec_csrf = await login(session, redis_client, clock, w.executor_id)
+    owner_sid, owner_csrf = await login(session, redis_client, clock, w.system_owner_id)
+
+    async with http(session, redis_client, clock) as c:
+
+        async def post(sid: str, csrf: str, path: str, body: dict[str, Any]) -> dict[str, Any]:
+            r = await c.post(
+                f"/api/v1/tasks/{task_id}/{path}",
+                cookies={"drcc_session": sid},
+                headers=headers(csrf),
+                json=body,
+            )
+            assert r.status_code == 200, r.text
+            return r.json()
+
+        assert (await post(exec_sid, exec_csrf, "start", {"expected_version": 1}))["status"] == "IN_PROGRESS"
+        assert (await post(exec_sid, exec_csrf, "block", {"expected_version": 2, "reason": "DNS"}))[
+            "status"
+        ] == "BLOCKED"
+        await session.execute(
+            text("UPDATE blockers SET status = 'CLOSED' WHERE task_id = :t"), {"t": task_id}
+        )
+        assert (await post(exec_sid, exec_csrf, "resume", {"expected_version": 3}))["status"] == "IN_PROGRESS"
+        submitted = await post(
+            exec_sid,
+            exec_csrf,
+            "submit-validation",
+            {"expected_version": 4, "verification_note": "Resolves at DR"},
+        )
+        assert submitted["status"] == "READY_FOR_VALIDATION"
+        done = await post(owner_sid, owner_csrf, "validate", {"expected_version": 5, "approve": True})
+
+    assert (done["status"], done["version"]) == ("COMPLETED", 6)
+    assert done["completed_at"] is not None
+    assert Counter(await outbox_types(session, task_id))["TaskStateChanged"] == 5
+    for sid in (exec_sid, owner_sid):
+        await redis_client.delete(f"drcc:session:{sid}")

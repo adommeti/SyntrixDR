@@ -5,7 +5,19 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.dr_events.participants import user_can_see_event
 from app.tasks_dependencies.models import Task, TaskDependency
+
+
+async def get_visible_task(session: AsyncSession, actor_id: uuid.UUID, task_id: uuid.UUID) -> Task | None:
+    """None both when the Task doesn't exist and when its Event isn't visible to the actor -- the
+    caller renders both as the same 404 (invariant #1)."""
+    task = (
+        await session.execute(select(Task).where(Task.id == task_id, Task.deleted_at.is_(None)))
+    ).scalar_one_or_none()
+    if task is None or not await user_can_see_event(session, actor_id, task.dr_event_id):
+        return None
+    return task
 
 
 async def unsatisfied_hard_predecessors(session: AsyncSession, task_id: uuid.UUID) -> list[Task]:
