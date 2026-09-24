@@ -443,6 +443,9 @@ async def test_legal_transition(
     row = await task_row(session, task_id)
     assert row.status == to_state
     assert row.version == 2
+    # Fixed Owning Team, floating Current Assignee: no lifecycle command touches either (the
+    # assignee moves only through BUILD-07's assign/volunteer).
+    assert (task.owning_team_id, task.current_assignee_user_id) == (w.team_id, w.executor_id)
 
 
 @pytest.mark.parametrize(("from_state", "command"), ILLEGAL_ROWS)
