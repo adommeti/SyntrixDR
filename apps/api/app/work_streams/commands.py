@@ -88,16 +88,6 @@ async def create_work_stream(
         raise TeamNotFoundError()
 
     clean_name = name.strip()
-    duplicate = await session.execute(
-        select(WorkStream.id).where(
-            WorkStream.dr_event_id == dr_event_id,
-            func.lower(WorkStream.name) == clean_name.lower(),
-            WorkStream.deleted_at.is_(None),
-        )
-    )
-    if duplicate.first() is not None:
-        raise WorkStreamExistsError()
-
     now = clock.now()
     work_stream = WorkStream(
         dr_event_id=dr_event_id,
@@ -115,7 +105,9 @@ async def create_work_stream(
             session.add(work_stream)
             await session.flush()
     except IntegrityError:
-        # Lost a race to a concurrent create of the same name (ux_work_stream_event_name).
+        # ux_work_stream_event_name (lower(name), live rows) is the single source of truth for
+        # uniqueness -- it catches a plain duplicate and a concurrent one alike. Lead and Team were
+        # checked above, so no other constraint on this insert can raise IntegrityError.
         raise WorkStreamExistsError() from None
 
     await write_audit(
