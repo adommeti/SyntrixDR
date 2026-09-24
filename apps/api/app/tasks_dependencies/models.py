@@ -19,8 +19,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 from app.core.external_refs import milestones_table
+from app.dr_events.models import DrApplication, DrEvent
+from app.users_teams_org.models import Team, User
+from app.work_streams.models import WorkStream
 
-_ = milestones_table  # registers the `milestones` FK target (BUILD-07 owns the real model)
+# Registers every cross-module FK target on Base.metadata (ADR-038), so these models work in a
+# process that imports nothing else first. `milestones` is a stub until BUILD-07's real model.
+_ = (milestones_table, DrApplication, DrEvent, Team, User, WorkStream)
 
 
 def _now_utc() -> datetime:

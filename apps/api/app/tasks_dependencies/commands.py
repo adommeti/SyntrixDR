@@ -165,11 +165,12 @@ async def create_draft_dependency(
     created_by_user_id: uuid.UUID,
     strength: str = "HARD",
 ) -> TaskDependency | None:
-    """Minimal no-self-edge/no-exact-duplicate guard only -- full DAG cycle detection across the
-    whole graph is BUILD-06's scope (plan Risk #2). Returns `None` (no-op, not an error) for a
-    self-edge or an exact duplicate of an existing edge, since a malformed import row shouldn't
-    abort the whole accept; the row is left for a human to reconcile post-import (D-221: "manual
-    edit/merge/split/reclassify always possible")."""
+    """Insert-only helper for BUILD-05's Excel import: rejects self edges and exact duplicates as a
+    no-op (`None`, not an error), so one malformed row doesn't abort the whole accept (D-221: "manual
+    edit/merge/split/reclassify always possible"). It does **not** check for cycles -- its caller must
+    hold `lock_event_dependency_graph` and run `queries.find_cycle_path` first, as
+    `plans_import.commands.process_accepted_import` does. API writes go through
+    `dependency_service.DependencyService` instead."""
     if predecessor_task_id == successor_task_id:
         return None
 

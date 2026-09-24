@@ -8,6 +8,10 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.dr_events.models import DrEvent
+from app.users_teams_org.models import Team, User
+
+_ = (DrEvent, Team, User)  # registers cross-module FK targets on Base.metadata (ADR-038)
 
 
 def _now_utc() -> datetime:

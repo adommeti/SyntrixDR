@@ -205,6 +205,8 @@ class DrEventTransitionService:
         if hard_stop_failures:
             if not override_reason or not override_reason.strip():
                 raise ReadinessHardStopError([r.key for r in hard_stop_failures])
+            # D-224: `dependency_graph_acyclic` is HARD_STOP and not configurable; a cycle is invalid
+            # outright (FROZEN_DECISIONS.md §7.9), so no override_reason gets past it (readiness_service).
             unoverridable = [r.key for r in hard_stop_failures if r.key in NON_OVERRIDABLE_KEYS]
             if unoverridable:
                 raise ReadinessHardStopError(unoverridable)
