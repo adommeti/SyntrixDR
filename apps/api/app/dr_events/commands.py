@@ -10,6 +10,7 @@ from app.core.audit import write_audit
 from app.core.clock import Clock, SystemClock
 from app.core.errors import AppError
 from app.core.outbox import write_outbox
+from app.dr_events.errors import DrEventNotFoundError
 from app.dr_events.models import DrApplication, DrEvent, Override
 from app.dr_events.participants import enrol_participant, user_can_see_event
 from app.plans_import.commands import instantiate_plan_into_event
@@ -19,14 +20,6 @@ _OWNER_TYPE_TO_PARTICIPANT_SOURCE = {
     "SYSTEM_APPLICATION": "APP_OWNER",
     "BUSINESS": "BUSINESS_OWNER",
 }
-
-
-class DrEventNotFoundError(AppError):
-    code = "DR_EVENT_NOT_FOUND"
-    status_code = 404
-
-    def __init__(self) -> None:
-        super().__init__("DR Event not found.")
 
 
 class PlanVersionRequiredError(AppError):

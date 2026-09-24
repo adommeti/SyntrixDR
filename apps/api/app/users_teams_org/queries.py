@@ -159,3 +159,8 @@ async def is_active_team_member(
         )
     )
     return result.first() is not None
+
+
+async def get_team(session: AsyncSession, team_id: uuid.UUID) -> Team | None:
+    team = await session.get(Team, team_id)
+    return team if team is not None and team.deleted_at is None else None

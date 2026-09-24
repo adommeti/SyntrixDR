@@ -32,6 +32,7 @@ from app.tasks_dependencies.commands import create_draft_task
 from app.tasks_dependencies.routes import router as tasks_router
 from app.users_teams_org.models import RoleAssignment
 from app.work_streams.commands import get_or_create_work_stream
+from app.work_streams.routes import router as work_streams_router
 
 # --------------------------------------------------------------------------------------------
 # World
@@ -59,6 +60,7 @@ class World:
     business_owner_id: uuid.UUID  # BUSINESS slot 1 of the Task's Application
     ws_lead_id: uuid.UUID  # WORK_STREAM_LEAD at the Task's Work Stream
     manager_id: uuid.UUID  # MANAGER role, Team.manager_user_id of the Owning Team
+    coordinator_id: uuid.UUID  # DR_COORDINATOR (GLOBAL), explicit participant
 
 
 async def make_user(session: AsyncSession, name: str, *, entra: bool = False) -> uuid.UUID:
@@ -193,6 +195,8 @@ async def build_world(session: AsyncSession) -> World:
         session, other_application_id, other_app_owner_id, owner_type="SYSTEM_APPLICATION", slot=1
     )
 
+    coordinator_id = await make_user(session, "Coordinator")
+    await grant_role(session, coordinator_id, "DR_COORDINATOR")
     ws_lead_id = await make_user(session, "WS lead")
     await grant_role(session, ws_lead_id, "WORK_STREAM_LEAD", scope_type="WORK_STREAM", scope_id=ws.id)
 
@@ -208,6 +212,7 @@ async def build_world(session: AsyncSession) -> World:
         (other_app_owner_id, "EXPLICIT"),
         (business_owner_id, "BUSINESS_OWNER"),
         (ws_lead_id, "WORK_STREAM_LEAD"),
+        (coordinator_id, "EXPLICIT"),
     ):
         await enrol_participant(session, event_id, uid, source, added_by_user_id=admin_id)
     await session.flush()
@@ -232,6 +237,7 @@ async def build_world(session: AsyncSession) -> World:
         business_owner_id=business_owner_id,
         ws_lead_id=ws_lead_id,
         manager_id=manager_id,
+        coordinator_id=coordinator_id,
     )
 
 
@@ -370,6 +376,7 @@ def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> F
     app.add_exception_handler(AppError, app_error_handler)
     app.include_router(tasks_router)
     app.include_router(dr_events_router)
+    app.include_router(work_streams_router)
 
     async def _session_override():  # noqa: ANN202
         yield session

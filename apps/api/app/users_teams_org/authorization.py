@@ -86,6 +86,9 @@ class Capability(str, Enum):
     #: ("own/Team work") is the kind of qualifier the GRANTS docstring below leaves to the owning
     #: transition service, so the Executor half lives in tasks_dependencies/policies.py, not here.
     EXECUTE_TASK = "EXECUTE_TASK"
+    #: BUILD-06: RBAC_MATRIX.md has no row for creating Work Streams either. They structure a
+    #: Coordinator-owned Event, so Admin + Coordinator (ADR-035; same shape as MANAGE_PLANS).
+    MANAGE_WORK_STREAMS = "MANAGE_WORK_STREAMS"
 
 
 #: Capabilities `GLOBAL_READONLY` may exercise (read-only; RBAC_MATRIX.md's only read-labeled row).
@@ -223,6 +226,7 @@ GRANTS: dict[Capability, dict[str, bool | str]] = {
     Capability.MANAGE_TIERS: {"GLOBAL_ADMIN": True},
     Capability.MANAGE_PLANS: {"GLOBAL_ADMIN": True, "DR_COORDINATOR": True},
     Capability.MANAGE_IMPORTS: {"GLOBAL_ADMIN": True, "DR_COORDINATOR": True},
+    Capability.MANAGE_WORK_STREAMS: {"GLOBAL_ADMIN": True, "DR_COORDINATOR": True},
     Capability.EXECUTE_TASK: {
         "GLOBAL_ADMIN": True,
         "DR_COORDINATOR": True,

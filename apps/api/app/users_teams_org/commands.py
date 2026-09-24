@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
 from app.core.clock import Clock, SystemClock
+from app.core.errors import AppError
 from app.identity_auth.models import LocalCredential
 from app.identity_auth.security import PasswordHasher, validate_password_policy
 from app.users_teams_org.authorization import AuthorizationService, Capability
@@ -16,6 +17,22 @@ from app.users_teams_org.models import RoleAssignment, User
 @dataclass
 class CreateLocalUserResult:
     user_id: uuid.UUID
+
+
+class UserNotFoundError(AppError):
+    code = "USER_NOT_FOUND"
+    status_code = 404
+
+    def __init__(self) -> None:
+        super().__init__("User not found.")
+
+
+class TeamNotFoundError(AppError):
+    code = "TEAM_NOT_FOUND"
+    status_code = 404
+
+    def __init__(self) -> None:
+        super().__init__("Team not found.")
 
 
 async def create_local_user(

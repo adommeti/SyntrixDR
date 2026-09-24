@@ -15,8 +15,9 @@ from app.core.errors import AppError
 from app.dr_events.queries import get_dr_application
 from app.policies_admin.queries import PolicyService
 from app.tasks_dependencies.models import Task
-from app.users_teams_org.authorization import AuthorizationService, Capability, Scope
+from app.users_teams_org.authorization import GRANTS, AuthorizationService, Capability, Scope
 from app.users_teams_org.queries import has_active_role, is_active_team_member
+from app.work_streams.queries import is_work_stream_lead
 
 
 class SelfValidationForbiddenError(AppError):
@@ -46,11 +47,25 @@ async def _task_scopes(session: AsyncSession, task: Task) -> list[Scope]:
     return scopes
 
 
+def _grants_work_stream_lead(capability: Capability) -> bool:
+    return GRANTS.get(capability, {}).get("WORK_STREAM_LEAD") in (True, "SCOPE")
+
+
 async def _can_in_any_scope(
     session: AsyncSession, actor_id: uuid.UUID, capability: Capability, scopes: list[Scope]
 ) -> bool:
+    """`AuthorizationService.can` in any of the scopes -- plus a stream's designated Lead
+    (`work_streams.lead_user_id`), who holds Work Stream Lead authority in that stream for exactly the
+    capabilities whose GRANTS row gives WORK_STREAM_LEAD `True`/`"SCOPE"` (BUILD-06.plan.md Risk #19)."""
     for scope in scopes:
         if await AuthorizationService.can(session, actor_id, capability, scope):
+            return True
+        if (
+            scope.scope_type == "WORK_STREAM"
+            and scope.scope_id is not None
+            and _grants_work_stream_lead(capability)
+            and await is_work_stream_lead(session, scope.scope_id, actor_id)
+        ):
             return True
     return False
 
@@ -94,7 +109,7 @@ async def actor_may_validate_task(session: AsyncSession, actor_id: uuid.UUID, ta
             return True
         return await is_system_application_owner(session, application_id, actor_id)
     stream_scope = Scope(scope_type="WORK_STREAM", scope_id=task.work_stream_id)
-    return await AuthorizationService.can(session, actor_id, Capability.VALIDATE_TASK_STANDARD, stream_scope)
+    return await _can_in_any_scope(session, actor_id, Capability.VALIDATE_TASK_STANDARD, [stream_scope])
 
 
 def assert_not_self_validation(actor_id: uuid.UUID, task: Task, submitted_by_user_id: uuid.UUID) -> None:
@@ -119,7 +134,7 @@ async def actor_may_override(
         if task.work_stream_id is not None
         else Scope()
     )
-    return await AuthorizationService.can(session, actor_id, Capability.OVERRIDE_WITHIN_WORK_STREAM, scope)
+    return await _can_in_any_scope(session, actor_id, Capability.OVERRIDE_WITHIN_WORK_STREAM, [scope])
 
 
 async def actor_may_change_dependency(
