@@ -70,13 +70,13 @@ class Readiness:
 
 
 @dataclass(frozen=True)
-class _Upstream:
+class Upstream:
     ref: GateRef
     strength: str
     satisfied: bool
 
 
-def _derive(task_status: str, upstream: list[_Upstream]) -> Readiness:
+def derive_readiness(task_status: str, upstream: list[Upstream]) -> Readiness:
     """The Ready rule (STATE_MACHINES.md:50), in one place. Strict: a CANCELLED predecessor or a MISSED
     Milestone is not satisfied -- only an audited override gets past it."""
     order = sorted(upstream, key=lambda u: (u.ref.kind, str(u.ref.id)))
@@ -89,11 +89,11 @@ def _derive(task_status: str, upstream: list[_Upstream]) -> Readiness:
 
 async def _upstream_by_task(
     session: AsyncSession, task_ids: list[uuid.UUID] | Select[tuple[uuid.UUID]]
-) -> dict[uuid.UUID, list[_Upstream]]:
+) -> dict[uuid.UUID, list[Upstream]]:
     """Every live incoming edge and gate for these Tasks -- a list of ids, or a subquery selecting them
     (what the Event-wide projection passes, to avoid thousands of bind parameters). Edges from a
     soft-deleted Task and gates of a soft-deleted Milestone are dead and ignored."""
-    by_task: dict[uuid.UUID, list[_Upstream]] = defaultdict(list)
+    by_task: dict[uuid.UUID, list[Upstream]] = defaultdict(list)
     if isinstance(task_ids, list) and not task_ids:
         return by_task
     preds = await session.execute(
@@ -114,7 +114,7 @@ async def _upstream_by_task(
     )
     for successor_id, strength, pred_id, pred_status, pred_ws in preds:
         by_task[successor_id].append(
-            _Upstream(GateRef(pred_id, "TASK", pred_ws), strength, pred_status == _TASK_SATISFIED)
+            Upstream(GateRef(pred_id, "TASK", pred_ws), strength, pred_status == _TASK_SATISFIED)
         )
     gates = await session.execute(
         select(
@@ -133,7 +133,7 @@ async def _upstream_by_task(
     )
     for successor_id, strength, milestone_id, milestone_status, milestone_ws in gates:
         by_task[successor_id].append(
-            _Upstream(
+            Upstream(
                 GateRef(milestone_id, "MILESTONE", milestone_ws),
                 strength,
                 milestone_status == _MILESTONE_SATISFIED,
@@ -143,7 +143,7 @@ async def _upstream_by_task(
 
 
 async def readiness(session: AsyncSession, task: Task) -> Readiness:
-    return _derive(task.status, (await _upstream_by_task(session, [task.id]))[task.id])
+    return derive_readiness(task.status, (await _upstream_by_task(session, [task.id]))[task.id])
 
 
 async def is_ready(session: AsyncSession, task: Task) -> bool:
@@ -215,14 +215,13 @@ async def _live_task_edges(
     return [(p, s) for p, s in rows]
 
 
-async def find_cycle_path(
-    session: AsyncSession, dr_event_id: uuid.UUID, predecessor_id: uuid.UUID, successor_id: uuid.UUID
+def cycle_path(
+    edges: list[tuple[uuid.UUID, uuid.UUID]], predecessor_id: uuid.UUID, successor_id: uuid.UUID
 ) -> list[uuid.UUID] | None:
-    """If adding `predecessor -> successor` would close a directed cycle, that cycle as
-    `[predecessor, successor, ..., predecessor]`; otherwise None. The caller must hold the Event's
-    dependency-graph lock, or a concurrent insert could close a cycle this check never saw."""
+    """Pure: would adding `predecessor -> successor` to `edges` close a directed cycle? If so, the cycle
+    as `[predecessor, successor, ..., predecessor]` (BFS, so a shortest one); otherwise None."""
     successors: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
-    for p, s in await _live_task_edges(session, dr_event_id):
+    for p, s in edges:
         successors[p].append(s)
 
     parent: dict[uuid.UUID, uuid.UUID | None] = {successor_id: None}
@@ -243,10 +242,8 @@ async def find_cycle_path(
     return None
 
 
-async def event_graph_has_cycle(session: AsyncSession, dr_event_id: uuid.UUID) -> bool:
-    """Kahn's algorithm over the Event's live Task edges. The API rejects cycles at write time, so this
-    only ever fires on rows written around it -- which is what D-224's readiness key is for."""
-    edges = await _live_task_edges(session, dr_event_id)
+def has_cycle(edges: list[tuple[uuid.UUID, uuid.UUID]]) -> bool:
+    """Pure: Kahn's algorithm -- a graph is acyclic iff every node can be removed in topological order."""
     successors: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
     indegree: Counter[uuid.UUID] = Counter()
     nodes: set[uuid.UUID] = set()
@@ -264,6 +261,20 @@ async def event_graph_has_cycle(session: AsyncSession, dr_event_id: uuid.UUID) -
             if indegree[nxt] == 0:
                 queue.append(nxt)
     return removed != len(nodes)
+
+
+async def find_cycle_path(
+    session: AsyncSession, dr_event_id: uuid.UUID, predecessor_id: uuid.UUID, successor_id: uuid.UUID
+) -> list[uuid.UUID] | None:
+    """`cycle_path` over the Event's live edges. The caller must hold the Event's dependency-graph lock,
+    or a concurrent insert could close a cycle this check never saw."""
+    return cycle_path(await _live_task_edges(session, dr_event_id), predecessor_id, successor_id)
+
+
+async def event_graph_has_cycle(session: AsyncSession, dr_event_id: uuid.UUID) -> bool:
+    """`has_cycle` over the Event's live edges. The API rejects cycles at write time, so this only ever
+    fires on rows written around it -- which is what D-224's readiness key is for."""
+    return has_cycle(await _live_task_edges(session, dr_event_id))
 
 
 # --------------------------------------------------------------------------------------------
@@ -382,7 +393,7 @@ async def dependency_graph(session: AsyncSession, dr_event_id: uuid.UUID) -> Dep
 
     nodes: list[GraphNode] = []
     for t in tasks:
-        r = _derive(t.status, upstream[t.id])
+        r = derive_readiness(t.status, upstream[t.id])
         nodes.append(
             GraphNode(
                 id=t.id,
