@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import write_audit
 from app.core.clock import Clock
 from app.validation_evidence.models import Validation
+from app.validation_evidence.transition_service import ValidationTransitionService
 
 
 async def open_task_validation(
@@ -43,3 +44,26 @@ async def open_task_validation(
         after={"target_type": "TASK", "target_id": str(task_id), "status": validation.status},
     )
     return validation
+
+
+async def close_task_validation(
+    session: AsyncSession,
+    *,
+    validation: Validation,
+    approve: bool,
+    validator_user_id: uuid.UUID,
+    note: str | None,
+    dr_event_id: uuid.UUID,
+    clock: Clock,
+) -> Validation:
+    """Application-layer entry point other modules call, so they never import this module's
+    transition service directly (cross-module rule: commands.py/queries.py only)."""
+    return await ValidationTransitionService.close_task_validation(
+        session,
+        validation=validation,
+        approve=approve,
+        validator_user_id=validator_user_id,
+        note=note,
+        dr_event_id=dr_event_id,
+        clock=clock,
+    )

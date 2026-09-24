@@ -10,6 +10,17 @@ from app.core.errors import AppError
 from app.tasks_dependencies.models import Task, TaskDependency
 
 
+class TaskNotFoundError(AppError):
+    """404 both for a Task that doesn't exist and for one in an Event the caller can't see --
+    never 403 for the latter, or the error would confirm the Task exists (invariant #1)."""
+
+    code = "TASK_NOT_FOUND"
+    status_code = 404
+
+    def __init__(self) -> None:
+        super().__init__("Task not found.")
+
+
 class TaskContextRequiredError(AppError):
     code = "TASK_CONTEXT_REQUIRED"
     status_code = 422

@@ -81,3 +81,21 @@ async def get_application_history(
     rather than fabricating rows or 501ing (BUILD-03.plan.md Risk #2)."""
     _ = session, application_id
     return []
+
+
+async def is_system_application_owner(
+    session: AsyncSession, application_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    """Any of the up-to-3 `SYSTEM_APPLICATION` slots (D-209, D-254). Never `BUSINESS`: technical
+    validation belongs to the Application/System Owner, not the Business Owner (RBAC_MATRIX.md
+    security notes). Slot ownership is its own table, not a role grant, so `AuthorizationService`
+    can't see it -- callers needing "is this user an owner" must ask here."""
+    result = await session.execute(
+        select(ApplicationOwner.id).where(
+            ApplicationOwner.application_id == application_id,
+            ApplicationOwner.user_id == user_id,
+            ApplicationOwner.owner_type == "SYSTEM_APPLICATION",
+            ApplicationOwner.deleted_at.is_(None),
+        )
+    )
+    return result.first() is not None

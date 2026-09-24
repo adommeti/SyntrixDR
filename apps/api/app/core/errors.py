@@ -42,6 +42,17 @@ class ConcurrencyConflictError(AppError):
         super().__init__("This record was modified by someone else. Reload and try again.")
 
 
+class OverrideReasonRequiredError(AppError):
+    """API_CONTRACT.md:53 — an override/force/cancel/acknowledge (or any other command whose reason is
+    mandatory) submitted without that reason. Blank/whitespace-only counts as missing."""
+
+    code = "OVERRIDE_REASON_REQUIRED"
+    status_code = 400
+
+    def __init__(self, what: str = "This action") -> None:
+        super().__init__(f"{what} requires a non-empty reason.")
+
+
 def error_envelope(error: AppError, correlation_id: str) -> dict[str, Any]:
     return {
         "error": {
