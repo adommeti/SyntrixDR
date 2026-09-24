@@ -52,6 +52,9 @@ if in_scope api; then
           || exit 1
       else
         run "pytest (all)" uv run pytest -q --no-header -p no:cacheprovider || exit 1
+        # `load` is excluded from the default run (pyproject addopts) so CI never times it on a slow
+        # runner; locally it's a gate.
+        run "pytest (load smoke)" uv run pytest -q -m load --no-header -p no:cacheprovider || exit 1
       fi
     ) || fail=1
   else

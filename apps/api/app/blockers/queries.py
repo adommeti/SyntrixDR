@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockers.models import INACTIVE_BLOCKER_STATUS, Blocker
@@ -24,10 +24,11 @@ async def count_active_blockers(session: AsyncSession, task_id: uuid.UUID) -> in
 
 
 async def count_active_blockers_by_task(
-    session: AsyncSession, task_ids: list[uuid.UUID]
+    session: AsyncSession, task_ids: list[uuid.UUID] | Select[tuple[uuid.UUID]]
 ) -> dict[uuid.UUID, int]:
-    """`count_active_blockers` for many Tasks in one query; Tasks with none are absent."""
-    if not task_ids:
+    """`count_active_blockers` for many Tasks in one query -- a list of ids, or a subquery selecting
+    them. Tasks with none are absent."""
+    if isinstance(task_ids, list) and not task_ids:
         return {}
     rows = await session.execute(
         select(Blocker.task_id, func.count())

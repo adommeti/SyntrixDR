@@ -28,7 +28,7 @@ E2E_ARGS =
 MSG = change
 
 .PHONY: help dev dev-down verify-env install lint format typecheck \
-        test test-api test-web test-auth test-domain test-transitions \
+        test test-api test-web test-auth test-domain test-transitions test-load \
         e2e load-smoke verify \
         db-upgrade db-downgrade-one db-revision db-check \
         contracts security seed seed-load clean release-verify
@@ -49,6 +49,7 @@ help:
 	@echo "  test-auth         pytest -m auth        (BUILD-02 authorization matrix)"
 	@echo "  test-domain       pytest -m domain      (BUILD-03 domain rules)"
 	@echo "  test-transitions  pytest -m transitions (BUILD-04 lifecycle + invalid transitions)"
+	@echo "  test-load         pytest -m load        (BUILD-06 perf smoke: 5,000-Task DAG < 500 ms; not in default runs)"
 	@echo "  e2e               playwright (tests/e2e) against E2E_BASE_URL"
 	@echo "  load-smoke        k6 smoke (tests/load/smoke.js) against LOAD_BASE_URL"
 	@echo "  verify            lint + typecheck + test + db-check + contracts (drift check)"
@@ -136,6 +137,8 @@ test-domain:
 
 test-transitions:
 	cd $(API_DIR) && $(PYTEST) -q -m transitions $(PYTEST_ARGS)
+test-load:
+	cd $(API_DIR) && $(PYTEST) -q -m load $(PYTEST_ARGS)
 
 e2e:
 	pnpm exec playwright test --config tests/e2e/playwright.config.ts $(E2E_ARGS)

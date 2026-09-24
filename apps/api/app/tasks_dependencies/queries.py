@@ -12,7 +12,7 @@ import uuid
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
 
-from sqlalchemy import DateTime, Text, column, select, table
+from sqlalchemy import DateTime, Select, Text, column, select, table
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -88,12 +88,13 @@ def _derive(task_status: str, upstream: list[_Upstream]) -> Readiness:
 
 
 async def _upstream_by_task(
-    session: AsyncSession, task_ids: list[uuid.UUID]
+    session: AsyncSession, task_ids: list[uuid.UUID] | Select[tuple[uuid.UUID]]
 ) -> dict[uuid.UUID, list[_Upstream]]:
-    """Every live incoming edge and gate for these Tasks. Edges from a soft-deleted Task and gates of a
-    soft-deleted Milestone are dead and ignored."""
+    """Every live incoming edge and gate for these Tasks -- a list of ids, or a subquery selecting them
+    (what the Event-wide projection passes, to avoid thousands of bind parameters). Edges from a
+    soft-deleted Task and gates of a soft-deleted Milestone are dead and ignored."""
     by_task: dict[uuid.UUID, list[_Upstream]] = defaultdict(list)
-    if not task_ids:
+    if isinstance(task_ids, list) and not task_ids:
         return by_task
     preds = await session.execute(
         select(
@@ -312,17 +313,18 @@ class DependencyGraph:
 
 
 async def dependency_graph(session: AsyncSession, dr_event_id: uuid.UUID) -> DependencyGraph:
-    tasks = list(
-        (
-            await session.execute(
-                select(Task)
-                .where(Task.dr_event_id == dr_event_id, Task.deleted_at.is_(None))
-                .order_by(Task.id)
-            )
+    """Event-wide projection. Two things keep it inside the 5,000-Task / 500 ms smoke budget
+    (tests/test_dependency_performance.py): every "these Tasks" filter is the Event-scoped `live_tasks`
+    subquery, never a bound list of ids (5,000 bind parameters cost more than the query), and rows are
+    read as column tuples, not ORM instances."""
+    live_tasks = select(Task.id).where(Task.dr_event_id == dr_event_id, Task.deleted_at.is_(None))
+    tasks = (
+        await session.execute(
+            select(Task.id, Task.title, Task.status, Task.dr_application_id, Task.work_stream_id)
+            .where(Task.dr_event_id == dr_event_id, Task.deleted_at.is_(None))
+            .order_by(Task.id)
         )
-        .scalars()
-        .all()
-    )
+    ).all()
     task_by_id = {t.id: t for t in tasks}
     milestones = (
         await session.execute(
@@ -343,34 +345,40 @@ async def dependency_graph(session: AsyncSession, dr_event_id: uuid.UUID) -> Dep
         e
         for e in (
             await session.execute(
-                select(TaskDependency)
+                select(
+                    TaskDependency.id,
+                    TaskDependency.predecessor_task_id,
+                    TaskDependency.successor_task_id,
+                    TaskDependency.strength,
+                )
                 .where(TaskDependency.dr_event_id == dr_event_id, TaskDependency.deleted_at.is_(None))
                 .order_by(TaskDependency.id)
             )
-        )
-        .scalars()
-        .all()
+        ).all()
         if e.predecessor_task_id in task_by_id and e.successor_task_id in task_by_id
     ]
     gates = [
         g
         for g in (
             await session.execute(
-                select(MilestoneDependency)
+                select(
+                    MilestoneDependency.id,
+                    MilestoneDependency.milestone_id,
+                    MilestoneDependency.successor_task_id,
+                    MilestoneDependency.strength,
+                )
                 .where(
-                    MilestoneDependency.successor_task_id.in_(list(task_by_id)),
+                    MilestoneDependency.successor_task_id.in_(live_tasks),
                     MilestoneDependency.deleted_at.is_(None),
                 )
                 .order_by(MilestoneDependency.id)
             )
-        )
-        .scalars()
-        .all()
+        ).all()
         if g.milestone_id in milestone_ids
     ]
 
-    upstream = await _upstream_by_task(session, list(task_by_id))
-    blocker_counts = await count_active_blockers_by_task(session, list(task_by_id))
+    upstream = await _upstream_by_task(session, live_tasks)
+    blocker_counts = await count_active_blockers_by_task(session, live_tasks)
 
     nodes: list[GraphNode] = []
     for t in tasks:
