@@ -293,3 +293,67 @@ async def test_event_detail_lists_its_dr_applications_with_rpo_settings(
     )
     assert (app["status"], app["rto_target_minutes"]) == ("NOT_STARTED", 120)
     await redis_client.delete(f"drcc:session:{sid}")
+
+
+# --------------------------------------------------------------------------------------------
+# Every audit row about a DR Event carries its id (found by the session-d negative matrix)
+# --------------------------------------------------------------------------------------------
+
+
+async def test_every_lifecycle_audit_row_is_linked_to_its_event(
+    session: AsyncSession, clock: FakeClock
+) -> None:
+    """BUILD-04 wrote the Event's own lifecycle, creation, readiness-override and per-DR-Application
+    audit rows with `dr_event_id` NULL, so none of them appeared in the Event's trail
+    (`ix_audit_event_time`). Walk one Event through its whole lifecycle and check every row."""
+    from app.dr_events.commands import create_event
+
+    w = await build_world(session)
+    event = await create_event(
+        session,
+        actor_id=w.admin_id,
+        name="Audit trail",
+        event_type="PLANNED_DR",
+        application_ids=[w.application_id],
+        clock=clock,
+    )
+    event_id = event.id
+    svc = DrEventTransitionService
+    await svc.activate(
+        session,
+        actor_id=w.admin_id,
+        event_id=event_id,
+        expected_version=1,
+        override_reason="Drill",
+        clock=clock,
+    )
+    await svc.start_failover(session, actor_id=w.admin_id, event_id=event_id, expected_version=2, clock=clock)
+    await svc.mark_failed_over(
+        session, actor_id=w.admin_id, event_id=event_id, expected_version=3, clock=clock
+    )
+    await svc.start_failback(session, actor_id=w.admin_id, event_id=event_id, expected_version=4, clock=clock)
+    await svc.close(session, actor_id=w.admin_id, event_id=event_id, expected_version=5, clock=clock)
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT action, dr_event_id FROM audit_events WHERE entity_id = :e "
+                "OR entity_id IN (SELECT id FROM dr_applications WHERE dr_event_id = :e)"
+            ),
+            {"e": event_id},
+        )
+    ).all()
+    actions = {r.action for r in rows}
+    assert {
+        "DR_EVENT_CREATED",
+        "DR_APPLICATION_CREATED",
+        "READINESS_OVERRIDE_RECORDED",
+        "DR_EVENT_ACTIVATED",
+        "DR_EVENT_FAILOVER_STARTED",
+        "DR_APPLICATION_RECOVERING",
+        "DR_EVENT_FAILED_OVER",
+        "DR_EVENT_FAILBACK_STARTED",
+        "DR_EVENT_CLOSED",
+    } <= actions
+    unlinked = sorted(r.action for r in rows if r.dr_event_id != event_id)
+    assert unlinked == [], f"audit rows missing dr_event_id: {unlinked}"

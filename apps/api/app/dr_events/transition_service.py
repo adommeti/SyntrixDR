@@ -61,7 +61,7 @@ _TERMINAL_STATES = frozenset({"CLOSED", "CANCELLED"})
 
 class InvalidEventTransitionError(AppError):
     code = "INVALID_TRANSITION"
-    status_code = 422
+    status_code = 409  # API_CONTRACT.md:49
 
     def __init__(self, current: str, target: str) -> None:
         super().__init__(f"Cannot transition DR Event from {current} to {target}.")
@@ -147,6 +147,7 @@ async def _mutate_and_finish(
         entity_type="DR_EVENT",
         entity_id=event.id,
         action=action,
+        dr_event_id=event.id,
         before=dict(before),
         after=after,
     )
@@ -225,6 +226,7 @@ class DrEventTransitionService:
                     entity_type="DR_EVENT",
                     entity_id=event.id,
                     action="READINESS_OVERRIDE_RECORDED",
+                    dr_event_id=event.id,
                     after={"policy_key": result.key, "reason": override_reason},
                 )
 
@@ -308,6 +310,7 @@ class DrEventTransitionService:
                 entity_type="DR_APPLICATION",
                 entity_id=dr_application.id,
                 action="DR_APPLICATION_RECOVERING",
+                dr_event_id=event.id,
                 before=app_before,
                 after={"status": dr_application.status},
             )
@@ -408,6 +411,7 @@ class DrEventTransitionService:
                 entity_type="DR_APPLICATION",
                 entity_id=dr_application.id,
                 action="DR_APPLICATION_FAILBACK_STARTED",
+                dr_event_id=event.id,
                 before=app_before,
                 after={"status": dr_application.status},
             )

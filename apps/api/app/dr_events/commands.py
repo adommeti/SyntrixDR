@@ -125,6 +125,7 @@ async def create_event(
             entity_type="DR_APPLICATION",
             entity_id=dr_application.id,
             action="DR_APPLICATION_CREATED",
+            dr_event_id=event.id,
             after={"application_id": str(app_id), "dr_event_id": str(event.id)},
         )
 
@@ -150,6 +151,7 @@ async def create_event(
         entity_type="DR_EVENT",
         entity_id=event.id,
         action="DR_EVENT_CREATED",
+        dr_event_id=event.id,
         after={"name": name, "event_type": event_type, "status": event.status},
     )
     await write_outbox(
