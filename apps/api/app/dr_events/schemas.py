@@ -88,3 +88,40 @@ class CancelEventRequest(BaseModel):
 
     expected_version: int
     reason: str
+
+
+class ClosureExceptionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = None
+
+
+class CloseEventRequest(BaseModel):
+    """`closure_exception` overrides D-227's Monitoring closure warning, with an audited reason."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: int
+    closure_exception: ClosureExceptionRequest | None = None
+
+
+class DrApplicationResponse(BaseModel):
+    """An in-scope Application's Event-specific instance, including D-224's `rpo_not_applicable`."""
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: uuid.UUID
+    application_id: uuid.UUID
+    status: str
+    effective_tier_id: uuid.UUID
+    effective_sla_minutes: int
+    rto_target_minutes: int
+    rpo_target_minutes: int | None
+    rpo_not_applicable: bool
+    failback_required: bool
+
+
+class DrEventDetailResponse(DrEventResponse):
+    """`GET /dr-events/{id}` -- "Event deep detail" (API_CONTRACT.md)."""
+
+    dr_applications: list[DrApplicationResponse]

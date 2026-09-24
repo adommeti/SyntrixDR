@@ -305,6 +305,49 @@
         "title": "CancelTaskRequest",
         "type": "object"
       },
+      "CloseEventRequest": {
+        "additionalProperties": false,
+        "description": "`closure_exception` overrides D-227's Monitoring closure warning, with an audited reason.",
+        "properties": {
+          "closure_exception": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClosureExceptionRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "CloseEventRequest",
+        "type": "object"
+      },
+      "ClosureExceptionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "ClosureExceptionRequest",
+        "type": "object"
+      },
       "ColumnMappingRequest": {
         "additionalProperties": false,
         "properties": {
@@ -885,6 +928,315 @@
           "blocked_paths"
         ],
         "title": "DependencyGraphResponse",
+        "type": "object"
+      },
+      "DrApplicationResponse": {
+        "additionalProperties": false,
+        "description": "An in-scope Application's Event-specific instance, including D-224's `rpo_not_applicable`.",
+        "properties": {
+          "application_id": {
+            "format": "uuid",
+            "title": "Application Id",
+            "type": "string"
+          },
+          "effective_sla_minutes": {
+            "title": "Effective Sla Minutes",
+            "type": "integer"
+          },
+          "effective_tier_id": {
+            "format": "uuid",
+            "title": "Effective Tier Id",
+            "type": "string"
+          },
+          "failback_required": {
+            "title": "Failback Required",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "rpo_not_applicable": {
+            "title": "Rpo Not Applicable",
+            "type": "boolean"
+          },
+          "rpo_target_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rpo Target Minutes"
+          },
+          "rto_target_minutes": {
+            "title": "Rto Target Minutes",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "application_id",
+          "status",
+          "effective_tier_id",
+          "effective_sla_minutes",
+          "rto_target_minutes",
+          "rpo_target_minutes",
+          "rpo_not_applicable",
+          "failback_required"
+        ],
+        "title": "DrApplicationResponse",
+        "type": "object"
+      },
+      "DrEventDetailResponse": {
+        "additionalProperties": false,
+        "description": "`GET /dr-events/{id}` -- \"Event deep detail\" (API_CONTRACT.md).",
+        "properties": {
+          "ai_control_profile": {
+            "title": "Ai Control Profile",
+            "type": "string"
+          },
+          "baseline_plan_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Plan Version Id"
+          },
+          "cancel_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Reason"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "coordinator_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinator User Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dr_applications": {
+            "items": {
+              "$ref": "#/components/schemas/DrApplicationResponse"
+            },
+            "title": "Dr Applications",
+            "type": "array"
+          },
+          "event_timezone": {
+            "title": "Event Timezone",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "failback_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failback Started At"
+          },
+          "health_score": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Score"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "network_cut_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Cut At"
+          },
+          "parent_dr_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Dr Event Id"
+          },
+          "planned_start_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start At"
+          },
+          "source_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Location"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Location"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "parent_dr_event_id",
+          "name",
+          "event_type",
+          "description",
+          "status",
+          "coordinator_user_id",
+          "source_location",
+          "target_location",
+          "planned_start_at",
+          "event_timezone",
+          "network_cut_at",
+          "failback_started_at",
+          "completed_at",
+          "cancelled_at",
+          "cancel_reason",
+          "ai_control_profile",
+          "baseline_plan_version_id",
+          "health_score",
+          "version",
+          "created_at",
+          "updated_at",
+          "deleted_at",
+          "dr_applications"
+        ],
+        "title": "DrEventDetailResponse",
         "type": "object"
       },
       "DrEventListResponse": {
@@ -3957,7 +4309,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DrEventResponse"
+                  "$ref": "#/components/schemas/DrEventDetailResponse"
                 }
               }
             },
@@ -4101,7 +4453,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ExpectedVersionRequest"
+                "$ref": "#/components/schemas/CloseEventRequest"
               }
             }
           },

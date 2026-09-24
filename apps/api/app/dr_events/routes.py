@@ -9,11 +9,14 @@ from fastapi.responses import JSONResponse
 from app.core.idempotency import complete, require_idempotency_key
 from app.dr_events.commands import DrEventNotFoundError, create_event
 from app.dr_events.models import DrEvent
-from app.dr_events.queries import get_visible_event, list_visible_events
+from app.dr_events.queries import get_visible_event, list_dr_applications, list_visible_events
 from app.dr_events.schemas import (
     ActivateEventRequest,
     CancelEventRequest,
+    CloseEventRequest,
     CreateDrEventRequest,
+    DrApplicationResponse,
+    DrEventDetailResponse,
     DrEventListResponse,
     DrEventResponse,
     ExpectedVersionRequest,
@@ -93,11 +96,15 @@ async def list_events_route(session: DbSession, session_data: CurrentSession) ->
 @router.get("/dr-events/{event_id}")
 async def get_event_route(
     event_id: uuid.UUID, session: DbSession, session_data: CurrentSession
-) -> DrEventResponse:
+) -> DrEventDetailResponse:
     event = await get_visible_event(session, session_data.user_id, event_id)
     if event is None:
         raise DrEventNotFoundError()
-    return _event_response(event)
+    dr_applications = await list_dr_applications(session, event.id)
+    return DrEventDetailResponse(
+        **_event_response(event).model_dump(),
+        dr_applications=[DrApplicationResponse.model_validate(a) for a in dr_applications],
+    )
 
 
 async def _run_transition(
@@ -227,7 +234,7 @@ async def post_start_failback(
 async def post_close_event(
     event_id: uuid.UUID,
     request: Request,
-    body: ExpectedVersionRequest,
+    body: CloseEventRequest,
     session: DbSession,
     session_data: CurrentSession,
     clock: ClockDep,
@@ -242,6 +249,10 @@ async def post_close_event(
             actor_id=session_data.user_id,
             event_id=event_id,
             expected_version=body.expected_version,
+            # An exception object with no reason is a blank reason, rejected if one is needed.
+            closure_exception_reason=(body.closure_exception.reason or "")
+            if body.closure_exception
+            else None,
             clock=clock,
         ),
     )

@@ -987,6 +987,20 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /**
+         * CloseEventRequest
+         * @description `closure_exception` overrides D-227's Monitoring closure warning, with an audited reason.
+         */
+        CloseEventRequest: {
+            closure_exception?: components["schemas"]["ClosureExceptionRequest"] | null;
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** ClosureExceptionRequest */
+        ClosureExceptionRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
         /** ColumnMappingRequest */
         ColumnMappingRequest: {
             /** Source Header */
@@ -1188,6 +1202,102 @@ export interface components {
             edges: components["schemas"]["GraphEdgeResponse"][];
             /** Nodes */
             nodes: components["schemas"]["GraphNodeResponse"][];
+        };
+        /**
+         * DrApplicationResponse
+         * @description An in-scope Application's Event-specific instance, including D-224's `rpo_not_applicable`.
+         */
+        DrApplicationResponse: {
+            /**
+             * Application Id
+             * Format: uuid
+             */
+            application_id: string;
+            /** Effective Sla Minutes */
+            effective_sla_minutes: number;
+            /**
+             * Effective Tier Id
+             * Format: uuid
+             */
+            effective_tier_id: string;
+            /** Failback Required */
+            failback_required: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Rpo Not Applicable */
+            rpo_not_applicable: boolean;
+            /** Rpo Target Minutes */
+            rpo_target_minutes: number | null;
+            /** Rto Target Minutes */
+            rto_target_minutes: number;
+            /** Status */
+            status: string;
+        };
+        /**
+         * DrEventDetailResponse
+         * @description `GET /dr-events/{id}` -- "Event deep detail" (API_CONTRACT.md).
+         */
+        DrEventDetailResponse: {
+            /** Ai Control Profile */
+            ai_control_profile: string;
+            /** Baseline Plan Version Id */
+            baseline_plan_version_id: string | null;
+            /** Cancel Reason */
+            cancel_reason: string | null;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Coordinator User Id */
+            coordinator_user_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Description */
+            description: string | null;
+            /** Dr Applications */
+            dr_applications: components["schemas"]["DrApplicationResponse"][];
+            /** Event Timezone */
+            event_timezone: string;
+            /** Event Type */
+            event_type: string;
+            /** Failback Started At */
+            failback_started_at: string | null;
+            /** Health Score */
+            health_score: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Network Cut At */
+            network_cut_at: string | null;
+            /** Parent Dr Event Id */
+            parent_dr_event_id: string | null;
+            /** Planned Start At */
+            planned_start_at: string | null;
+            /** Source Location */
+            source_location: string | null;
+            /** Status */
+            status: string;
+            /** Target Location */
+            target_location: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
         };
         /** DrEventListResponse */
         DrEventListResponse: {
@@ -2622,7 +2732,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DrEventResponse"];
+                    "application/json": components["schemas"]["DrEventDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2717,7 +2827,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ExpectedVersionRequest"];
+                "application/json": components["schemas"]["CloseEventRequest"];
             };
         };
         responses: {

@@ -20,6 +20,7 @@ from app.blockers.queries import count_active_blockers_by_task
 from app.dr_events.participants import user_can_see_event
 from app.dr_events.queries import get_event
 from app.tasks_dependencies.models import MilestoneDependency, Task, TaskDependency
+from app.work_streams.queries import list_monitoring_stream_ids
 
 #: select()-only view of `milestones`. BUILD-07 owns the real model (BUILD-06.plan.md Risk #13); this
 #: isn't on `Base.metadata`, so it can't collide with `core/external_refs.py`'s FK stub or that model.
@@ -455,5 +456,44 @@ async def list_tasks(session: AsyncSession, dr_event_id: uuid.UUID) -> list[Task
         select(Task)
         .where(Task.dr_event_id == dr_event_id, Task.deleted_at.is_(None))
         .order_by(Task.sort_order.asc().nulls_last(), Task.created_at, Task.id)
+    )
+    return list(result.scalars().all())
+
+
+async def unfinished_monitoring_task_ids(session: AsyncSession, dr_event_id: uuid.UUID) -> list[uuid.UUID]:
+    """D-227: non-cancelled, non-COMPLETED Tasks in the Event's MONITORING Work Streams."""
+    streams = await list_monitoring_stream_ids(session, dr_event_id)
+    if not streams:
+        return []
+    result = await session.execute(
+        select(Task.id)
+        .where(
+            Task.work_stream_id.in_(streams),
+            Task.deleted_at.is_(None),
+            Task.status.not_in(("COMPLETED", "CANCELLED")),
+        )
+        .order_by(Task.id)
+    )
+    return list(result.scalars().all())
+
+
+async def live_monitoring_task_exists(session: AsyncSession, dr_event_id: uuid.UUID) -> bool:
+    """D-224 `readiness.monitoring_task_present`: at least one non-cancelled MONITORING-stream Task."""
+    streams = await list_monitoring_stream_ids(session, dr_event_id)
+    if not streams:
+        return False
+    result = await session.execute(
+        select(Task.id).where(
+            Task.work_stream_id.in_(streams), Task.deleted_at.is_(None), Task.status != "CANCELLED"
+        )
+    )
+    return result.first() is not None
+
+
+async def owning_team_ids(session: AsyncSession, dr_event_id: uuid.UUID) -> list[uuid.UUID]:
+    result = await session.execute(
+        select(Task.owning_team_id)
+        .where(Task.dr_event_id == dr_event_id, Task.deleted_at.is_(None))
+        .distinct()
     )
     return list(result.scalars().all())

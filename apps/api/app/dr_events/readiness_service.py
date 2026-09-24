@@ -8,13 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.applications_catalog.queries import list_application_ids_with_primary_owner
 from app.dr_events.models import DrApplication, DrEvent
 from app.policies_admin.queries import PolicyService
-from app.tasks_dependencies.queries import event_graph_has_cycle
+from app.tasks_dependencies.queries import event_graph_has_cycle, live_monitoring_task_exists, owning_team_ids
+from app.users_teams_org.queries import live_team_ids
+from app.work_streams.queries import every_stream_has_a_lead
 
-#: D-224 readiness catalog has 13 keys (FREEZE_ADDENDUM.md:60); these 7 are computable today. BUILD-06
-#: added `.dependency_graph_acyclic`. The other 6 (`readiness.failback_plan_exists`,
-#: `.critical_milestone_owner`, `.work_stream_lead`, `.task_owning_team`, `.monitoring_task_present`,
-#: `.needs_review_resolved`) still reference entities or commands that don't exist yet, and are
-#: deliberately never evaluated here, not faked as passing (BUILD-04.plan.md session-b scope).
+#: D-224 readiness catalog has 13 keys (FREEZE_ADDENDUM.md:60); these 10 are computable today. BUILD-06
+#: added `.dependency_graph_acyclic`, `.task_owning_team`, `.work_stream_lead` and
+#: `.monitoring_task_present`. The other 3 (`readiness.failback_plan_exists`,
+#: `.critical_milestone_owner`, `.needs_review_resolved`) still reference entities or commands that
+#: don't exist yet, and are deliberately never evaluated here, not faked as passing.
 EVALUATED_KEYS = (
     "readiness.event_timezone_set",
     "readiness.coordinator_assigned",
@@ -23,6 +25,9 @@ EVALUATED_KEYS = (
     "readiness.rpo_target_or_na",
     "readiness.primary_business_owner",
     "readiness.dependency_graph_acyclic",
+    "readiness.task_owning_team",
+    "readiness.work_stream_lead",
+    "readiness.monitoring_task_present",
 )
 
 #: D-224: "dependency graph acyclic — HARD_STOP and not configurable". A cycle is invalid outright
@@ -59,6 +64,7 @@ async def evaluate_readiness(session: AsyncSession, event: DrEvent) -> list[Read
         select(DrApplication).where(DrApplication.dr_event_id == event.id, DrApplication.deleted_at.is_(None))
     )
     dr_apps = list(dr_apps_result.scalars().all())
+    team_ids = await owning_team_ids(session, event.id)
 
     satisfied_by_key = {
         "readiness.event_timezone_set": bool(event.event_timezone),
@@ -73,6 +79,10 @@ async def evaluate_readiness(session: AsyncSession, event: DrEvent) -> list[Read
         "readiness.rpo_target_or_na": bool(dr_apps)
         and all(a.rpo_target_minutes is not None or a.rpo_not_applicable for a in dr_apps),
         "readiness.dependency_graph_acyclic": not await event_graph_has_cycle(session, event.id),
+        # tasks.owning_team_id is NOT NULL, so the only way this fails is the Team being soft-deleted.
+        "readiness.task_owning_team": set(team_ids) <= await live_team_ids(session, team_ids),
+        "readiness.work_stream_lead": await every_stream_has_a_lead(session, event.id),
+        "readiness.monitoring_task_present": await live_monitoring_task_exists(session, event.id),
     }
 
     results: list[ReadinessResult] = []

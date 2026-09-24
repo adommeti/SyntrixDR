@@ -35,3 +35,26 @@ async def is_work_stream_lead(session: AsyncSession, work_stream_id: uuid.UUID, 
 async def get_work_stream(session: AsyncSession, work_stream_id: uuid.UUID) -> WorkStream | None:
     ws = await session.get(WorkStream, work_stream_id)
     return ws if ws is not None and ws.deleted_at is None else None
+
+
+async def list_monitoring_stream_ids(session: AsyncSession, dr_event_id: uuid.UUID) -> list[uuid.UUID]:
+    result = await session.execute(
+        select(WorkStream.id).where(
+            WorkStream.dr_event_id == dr_event_id,
+            WorkStream.stream_type == "MONITORING",
+            WorkStream.deleted_at.is_(None),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def every_stream_has_a_lead(session: AsyncSession, dr_event_id: uuid.UUID) -> bool:
+    """D-224 `readiness.work_stream_lead`. True with no streams at all (BUILD-06.plan.md Risk #24)."""
+    result = await session.execute(
+        select(WorkStream.id).where(
+            WorkStream.dr_event_id == dr_event_id,
+            WorkStream.lead_user_id.is_(None),
+            WorkStream.deleted_at.is_(None),
+        )
+    )
+    return result.first() is None

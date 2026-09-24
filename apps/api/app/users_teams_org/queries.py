@@ -179,3 +179,10 @@ async def list_active_team_member_ids(
         )
     )
     return list(result.scalars().all())
+
+
+async def live_team_ids(session: AsyncSession, team_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    if not team_ids:
+        return set()
+    result = await session.execute(select(Team.id).where(Team.id.in_(team_ids), Team.deleted_at.is_(None)))
+    return set(result.scalars().all())
