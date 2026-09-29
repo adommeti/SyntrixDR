@@ -72,6 +72,9 @@ def _client(app: FastAPI) -> AsyncClient:
 
 
 async def _delete_world(engine: AsyncEngine, w: World, user_ids: list[uuid.UUID]) -> None:
+    """Children before parents, in FK order. Extend this list when a later increment adds a table
+    that references `tasks`, `users` or `dr_events` and is written by `build_world`/`start` (e.g.
+    milestones, blockers) -- a missed table fails this fixture's teardown loudly, never silently."""
     params: dict[str, Any] = {
         "eid": w.event_id,
         "uids": user_ids,
