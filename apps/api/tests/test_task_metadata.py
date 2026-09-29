@@ -18,7 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import FakeClock
 from app.core.errors import AppError
-from app.tasks_dependencies.commands import update_task_metadata
+from app.tasks_dependencies.commands import EDITABLE_FIELDS, update_task_metadata
+from app.tasks_dependencies.schemas import UpdateTaskRequest
 from tests.factories import audit_actions, build_world, headers, http, login, outbox_types, seed_task
 
 pytestmark = [pytest.mark.api]
@@ -239,6 +240,9 @@ async def test_a_terminal_task_is_not_editable(session: AsyncSession, clock: Fak
         {"title": "   "},
         {"title": None},
         {"evidence_min_count": -1},
+        {"evidence_min_count": 40_000},
+        {"expected_duration_minutes": 2**31},
+        {"sort_order": 2**31},
     ],
 )
 async def test_patch_rejects_non_metadata_and_invalid_fields(
@@ -284,4 +288,33 @@ async def test_patch_over_http_updates_and_replays(
     assert first.json()["version"] == 2
     assert again.json() == first.json()
     assert len(await _audit_after(session, task_id, "TASK_UPDATED")) == 1
+    await redis_client.delete(f"drcc:session:{sid}")
+
+
+def test_the_patch_schema_and_the_command_allow_the_same_fields() -> None:
+    """Two lists of one rule: the schema's `extra="forbid"` and the command's allowlist must not drift."""
+    assert set(UpdateTaskRequest.model_fields) - {"expected_version"} == EDITABLE_FIELDS
+
+
+async def test_create_rejects_an_out_of_range_evidence_count(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    sid, csrf = await login(session, redis_client, clock, w.coordinator_id)
+
+    async with http(session, redis_client, clock) as c:
+        r = await c.post(
+            f"/api/v1/dr-events/{w.event_id}/tasks",
+            cookies={"drcc_session": sid},
+            headers=headers(csrf),
+            json={
+                "title": "New",
+                "phase": "FAILOVER",
+                "owning_team_id": str(w.team_id),
+                "work_stream_id": str(w.work_stream_id),
+                "evidence_min_count": 40_000,
+            },
+        )
+
+    assert r.status_code == 422, r.text
     await redis_client.delete(f"drcc:session:{sid}")

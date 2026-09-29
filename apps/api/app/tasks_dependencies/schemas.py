@@ -8,6 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 #: schema_v1.sql `task_phase` / `task_status` (STATE_MACHINES.md §Task, D-252).
 TaskPhase = Literal["PRE_DR", "FAILOVER", "VALIDATION", "FAILBACK", "POST_DR"]
+#: Column bounds (`expected_duration_minutes`/`sort_order` INTEGER, `evidence_min_count` SMALLINT), so an
+#: out-of-range value is a 422 here rather than a DataError (500) at flush.
+_INT4_MAX = 2_147_483_647
+_INT2_MAX = 32_767
 TaskStatus = Literal[
     "NOT_STARTED", "IN_PROGRESS", "BLOCKED", "READY_FOR_VALIDATION", "COMPLETED", "CANCELLED"
 ]
@@ -165,10 +169,10 @@ class CreateTaskRequest(BaseModel):
     work_stream_id: uuid.UUID | None = None
     parent_task_id: uuid.UUID | None = None
     description: str | None = None
-    expected_duration_minutes: int | None = Field(default=None, ge=0)
-    sort_order: int | None = None
+    expected_duration_minutes: int | None = Field(default=None, ge=0, le=_INT4_MAX)
+    sort_order: int | None = Field(default=None, ge=-_INT4_MAX - 1, le=_INT4_MAX)
     evidence_required: bool = True
-    evidence_min_count: int = Field(default=1, ge=0)
+    evidence_min_count: int = Field(default=1, ge=0, le=_INT2_MAX)
     verification_note_required: bool = True
     needs_specific_validation: bool = False
 
@@ -183,10 +187,10 @@ class UpdateTaskRequest(BaseModel):
     expected_version: int
     title: str = Field(default="", min_length=1, pattern=r"\S")
     description: str | None = None
-    expected_duration_minutes: int | None = Field(default=None, ge=0)
-    sort_order: int | None = None
+    expected_duration_minutes: int | None = Field(default=None, ge=0, le=_INT4_MAX)
+    sort_order: int | None = Field(default=None, ge=-_INT4_MAX - 1, le=_INT4_MAX)
     evidence_required: bool = True
-    evidence_min_count: int = Field(default=1, ge=0)
+    evidence_min_count: int = Field(default=1, ge=0, le=_INT2_MAX)
     verification_note_required: bool = True
     needs_specific_validation: bool = False
 

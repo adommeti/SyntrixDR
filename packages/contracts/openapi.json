@@ -706,6 +706,7 @@
           },
           "evidence_min_count": {
             "default": 1,
+            "maximum": 32767.0,
             "minimum": 0.0,
             "title": "Evidence Min Count",
             "type": "integer"
@@ -718,6 +719,7 @@
           "expected_duration_minutes": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -763,6 +765,8 @@
           "sort_order": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
+                "minimum": -2147483648.0,
                 "type": "integer"
               },
               {
@@ -3196,6 +3200,7 @@
           },
           "evidence_min_count": {
             "default": 1,
+            "maximum": 32767.0,
             "minimum": 0.0,
             "title": "Evidence Min Count",
             "type": "integer"
@@ -3208,6 +3213,7 @@
           "expected_duration_minutes": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -3229,6 +3235,8 @@
           "sort_order": {
             "anyOf": [
               {
+                "maximum": 2147483647.0,
+                "minimum": -2147483648.0,
                 "type": "integer"
               },
               {
