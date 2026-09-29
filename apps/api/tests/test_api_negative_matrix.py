@@ -264,6 +264,23 @@ SPECS: dict[str, Spec] = {
             "illegal transition": illegal_from("COMPLETED", reason="x"),
         },
     ),
+    "update task": Spec(
+        "PATCH",
+        lambda w, ids: f"/api/v1/tasks/{ids['task']}",
+        body(expected_version=1, title="Renamed"),
+        task_in("NOT_STARTED"),
+        ok_actor="coordinator_id",
+        ok_status=200,
+        forbidden_actor="outsider_id",
+        not_found=TASK_404,
+        malformed=Case(422, "", body=body(expected_version=1, status="COMPLETED")),
+        guard=Case(
+            409,
+            "TASK_METADATA_LOCKED",
+            mutate=sql("UPDATE tasks SET status = 'COMPLETED' WHERE id = :t"),
+        ),
+        conflicts={"stale version": stale(title="Renamed")},
+    ),
     "create task": Spec(
         "POST",
         lambda w, ids: f"/api/v1/dr-events/{w.event_id}/tasks",

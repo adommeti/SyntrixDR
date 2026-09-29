@@ -173,6 +173,24 @@ class CreateTaskRequest(BaseModel):
     needs_specific_validation: bool = False
 
 
+class UpdateTaskRequest(BaseModel):
+    """`PATCH /tasks/{id}` (API_CONTRACT.md:158). Only fields present in the body change
+    (`model_fields_set`); the defaults below are never applied. `extra="forbid"` is what keeps status,
+    Owning Team, assignee, context, phase and parent out (422)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: int
+    title: str = Field(default="", min_length=1, pattern=r"\S")
+    description: str | None = None
+    expected_duration_minutes: int | None = Field(default=None, ge=0)
+    sort_order: int | None = None
+    evidence_required: bool = True
+    evidence_min_count: int = Field(default=1, ge=0)
+    verification_note_required: bool = True
+    needs_specific_validation: bool = False
+
+
 class TaskListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

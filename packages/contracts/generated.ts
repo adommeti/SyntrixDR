@@ -715,7 +715,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Task
+         * @description API_CONTRACT.md:158 -- non-state Task metadata; only the fields present in the body change.
+         */
+        patch: operations["patch_task_api_v1_tasks__task_id__patch"];
         trace?: never;
     };
     "/api/v1/tasks/{task_id}/block": {
@@ -1962,6 +1966,47 @@ export interface components {
             name?: string | null;
             /** Tier Id */
             tier_id?: string | null;
+        };
+        /**
+         * UpdateTaskRequest
+         * @description `PATCH /tasks/{id}` (API_CONTRACT.md:158). Only fields present in the body change
+         *     (`model_fields_set`); the defaults below are never applied. `extra="forbid"` is what keeps status,
+         *     Owning Team, assignee, context, phase and parent out (422).
+         */
+        UpdateTaskRequest: {
+            /** Description */
+            description?: string | null;
+            /**
+             * Evidence Min Count
+             * @default 1
+             */
+            evidence_min_count: number;
+            /**
+             * Evidence Required
+             * @default true
+             */
+            evidence_required: boolean;
+            /** Expected Duration Minutes */
+            expected_duration_minutes?: number | null;
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Needs Specific Validation
+             * @default false
+             */
+            needs_specific_validation: boolean;
+            /** Sort Order */
+            sort_order?: number | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Verification Note Required
+             * @default true
+             */
+            verification_note_required: boolean;
         };
         /** UpdateTiersRequest */
         UpdateTiersRequest: {
@@ -3459,6 +3504,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_task_api_v1_tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

@@ -3179,6 +3179,83 @@
         "title": "UpdateApplicationRequest",
         "type": "object"
       },
+      "UpdateTaskRequest": {
+        "additionalProperties": false,
+        "description": "`PATCH /tasks/{id}` (API_CONTRACT.md:158). Only fields present in the body change\n(`model_fields_set`); the defaults below are never applied. `extra=\"forbid\"` is what keeps status,\nOwning Team, assignee, context, phase and parent out (422).",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "evidence_min_count": {
+            "default": 1,
+            "minimum": 0.0,
+            "title": "Evidence Min Count",
+            "type": "integer"
+          },
+          "evidence_required": {
+            "default": true,
+            "title": "Evidence Required",
+            "type": "boolean"
+          },
+          "expected_duration_minutes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Duration Minutes"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "needs_specific_validation": {
+            "default": false,
+            "title": "Needs Specific Validation",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "title": {
+            "default": "",
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Title",
+            "type": "string"
+          },
+          "verification_note_required": {
+            "default": true,
+            "title": "Verification Note Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "UpdateTaskRequest",
+        "type": "object"
+      },
       "UpdateTiersRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5322,6 +5399,56 @@
           }
         },
         "summary": "Get Task Route",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      },
+      "patch": {
+        "description": "API_CONTRACT.md:158 -- non-state Task metadata; only the fields present in the body change.",
+        "operationId": "patch_task_api_v1_tasks__task_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Task",
         "tags": [
           "tasks_dependencies"
         ]

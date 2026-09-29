@@ -24,6 +24,7 @@ _T = str(uuid.uuid4())
 
 #: (method, path template) -> a body that passes schema validation, so the only thing missing is the key.
 BODIES: dict[tuple[str, str], dict[str, Any] | None] = {
+    ("PATCH", "/api/v1/tasks/{task_id}"): {"expected_version": 1, "title": "x"},
     ("POST", "/api/v1/tasks/{task_id}/start"): {"expected_version": 1},
     ("POST", "/api/v1/tasks/{task_id}/block"): {"expected_version": 1, "reason": "x"},
     ("POST", "/api/v1/tasks/{task_id}/resume"): {"expected_version": 1},

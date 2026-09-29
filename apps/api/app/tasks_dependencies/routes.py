@@ -10,7 +10,7 @@ from app.core.idempotency import complete, require_idempotency_key
 from app.dr_events.commands import DrEventNotFoundError
 from app.dr_events.queries import get_visible_event
 from app.identity_auth.dependencies import ClockDep, CurrentSession, DbSession, RequireCsrfDependency
-from app.tasks_dependencies.commands import TaskNotFoundError, create_task
+from app.tasks_dependencies.commands import TaskNotFoundError, create_task, update_task_metadata
 from app.tasks_dependencies.dependency_service import DependencyService
 from app.tasks_dependencies.models import Task, TaskDependency
 from app.tasks_dependencies.queries import get_visible_dependency_graph, get_visible_task, list_tasks
@@ -26,6 +26,7 @@ from app.tasks_dependencies.schemas import (
     TaskDependencyResponse,
     TaskListResponse,
     TaskResponse,
+    UpdateTaskRequest,
     ValidateTaskRequest,
 )
 from app.tasks_dependencies.transition_service import TaskTransitionService
@@ -63,6 +64,33 @@ async def get_task_route(
     if task is None:
         raise TaskNotFoundError()
     return TaskResponse.model_validate(task)
+
+
+@router.patch("/tasks/{task_id}", dependencies=[RequireCsrfDependency], response_model=None)
+async def patch_task(
+    task_id: uuid.UUID,
+    request: Request,
+    body: UpdateTaskRequest,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+) -> TaskResponse | JSONResponse:
+    """API_CONTRACT.md:158 -- non-state Task metadata; only the fields present in the body change."""
+    changes = {name: getattr(body, name) for name in body.model_fields_set - {"expected_version"}}
+    return await _run_transition(
+        request,
+        session,
+        session_data,
+        clock,
+        lambda: update_task_metadata(
+            session,
+            actor_id=session_data.user_id,
+            task_id=task_id,
+            expected_version=body.expected_version,
+            changes=changes,
+            clock=clock,
+        ),
+    )
 
 
 @router.post("/tasks/{task_id}/start", dependencies=[RequireCsrfDependency], response_model=None)

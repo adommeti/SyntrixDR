@@ -114,6 +114,28 @@ async def actor_may_change_task(session: AsyncSession, actor_id: uuid.UUID, task
     )
 
 
+#: `PATCH /tasks/{id}` fields that decide what completing the Task requires (D-226, D-209). Changing them
+#: is a management decision: an Executor editing their own work may not relax their own completion bar.
+REQUIREMENT_FIELDS = frozenset(
+    {"evidence_required", "evidence_min_count", "verification_note_required", "needs_specific_validation"}
+)
+
+
+async def actor_may_edit_task_metadata(
+    session: AsyncSession, actor_id: uuid.UUID, task: Task, fields: frozenset[str], *, at: datetime
+) -> bool:
+    """RBAC_MATRIX.md "Change Task metadata": Admin, Coordinator, Lead/App Owner in scope, Manager of the
+    Owning Team (`CHANGE_TASK_METADATA`) edit every field; an Executor edits the descriptive fields of
+    "own/Team work" -- EXECUTOR role and the current assignee or an active Owning Team member."""
+    if await actor_may_change_task(session, actor_id, task):
+        return True
+    if fields & REQUIREMENT_FIELDS or not await has_active_role(session, actor_id, "EXECUTOR"):
+        return False
+    if task.current_assignee_user_id == actor_id:
+        return True
+    return await is_active_team_member(session, task.owning_team_id, actor_id, at=at)
+
+
 async def actor_may_validate_task(session: AsyncSession, actor_id: uuid.UUID, task: Task) -> bool:
     """D-209, via RBAC_MATRIX.md's "Validate Task (standard)" row -- the row that names this exact
     transition. Application-scoped work: an Application/System Owner in *any* slot (checked against

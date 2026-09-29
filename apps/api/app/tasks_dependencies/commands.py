@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
 from app.core.clock import Clock, SystemClock
-from app.core.errors import AppError
+from app.core.errors import AppError, ConcurrencyConflictError
 from app.core.outbox import write_outbox
 from app.dr_events.errors import DrEventNotFoundError
 from app.dr_events.participants import enrol_participant, user_can_see_event
 from app.dr_events.queries import get_dr_application, get_event
 from app.tasks_dependencies.models import Task, TaskDependency
-from app.tasks_dependencies.policies import actor_may_create_task
+from app.tasks_dependencies.policies import (
+    REQUIREMENT_FIELDS,
+    actor_may_create_task,
+    actor_may_edit_task_metadata,
+)
 from app.users_teams_org.authorization import AuthorizationRequiredError
 from app.users_teams_org.commands import TeamNotFoundError
 from app.users_teams_org.queries import get_team, list_active_team_member_ids
@@ -45,6 +50,25 @@ class TaskContextRequiredError(AppError):
 
     def __init__(self) -> None:
         super().__init__("A Task needs a DR Application and/or a Work Stream (task_context_ck).")
+
+
+class TaskMetadataLockedError(AppError):
+    code = "TASK_METADATA_LOCKED"
+    status_code = 409
+
+    def __init__(self, status: str, fields: list[str]) -> None:
+        super().__init__(
+            f"These fields can't be edited while the Task is {status}.",
+            details={"status": status, "fields": fields},
+        )
+
+
+#: The only fields `PATCH /tasks/{id}` may change (API_CONTRACT.md:158 "non-state editable Task
+#: metadata"); the request schema forbids everything else.
+EDITABLE_FIELDS = (
+    frozenset({"title", "description", "expected_duration_minutes", "sort_order"}) | REQUIREMENT_FIELDS
+)
+_TERMINAL = frozenset({"COMPLETED", "CANCELLED"})
 
 
 async def create_draft_task(
@@ -299,5 +323,77 @@ async def create_task(
         payload={"change": "TASK_CREATED", "status": task.status},
         clock=clock,
         dr_event_id=dr_event_id,
+    )
+    return task
+
+
+async def update_task_metadata(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID,
+    task_id: uuid.UUID,
+    expected_version: int,
+    changes: Mapping[str, object],
+    clock: Clock | None = None,
+) -> Task:
+    """`PATCH /tasks/{id}`. Never a lifecycle change -- status, Owning Team, assignee, context, phase and
+    parent have no path here. Order as in the transition service: visible (404) -> authorized for these
+    fields (403) -> version (409) -> editable in this state (409) -> write + audit + outbox. A COMPLETED or
+    CANCELLED Task is closed; a READY_FOR_VALIDATION one keeps the requirements it was submitted under.
+    Values equal to the current ones are dropped; nothing left means no write and no version bump."""
+    clock = clock or SystemClock()
+    unknown = set(changes) - EDITABLE_FIELDS
+    if unknown:
+        raise ValueError(f"not editable Task metadata: {sorted(unknown)}")
+    task = (
+        await session.execute(
+            select(Task)
+            .where(Task.id == task_id, Task.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if task is None or not await user_can_see_event(session, actor_id, task.dr_event_id):
+        raise TaskNotFoundError()
+    fields = frozenset(changes)
+    if not await actor_may_edit_task_metadata(session, actor_id, task, fields, at=clock.now()):
+        raise AuthorizationRequiredError()
+    if task.version != expected_version:
+        raise ConcurrencyConflictError()
+    if task.status in _TERMINAL:
+        raise TaskMetadataLockedError(task.status, sorted(fields))
+    if task.status == "READY_FOR_VALIDATION" and fields & REQUIREMENT_FIELDS:
+        raise TaskMetadataLockedError(task.status, sorted(fields & REQUIREMENT_FIELDS))
+
+    changed = {name: value for name, value in changes.items() if getattr(task, name) != value}
+    if not changed:
+        return task
+    before: dict[str, object] = {name: getattr(task, name) for name in changed}
+    before["version"] = task.version
+    for name, value in changed.items():
+        setattr(task, name, value)
+    task.version += 1
+    task.updated_at = clock.now()
+    await session.flush()
+
+    after: dict[str, object] = {**changed, "version": task.version}
+    await write_audit(
+        session,
+        actor_user_id=actor_id,
+        entity_type="TASK",
+        entity_id=task.id,
+        action="TASK_UPDATED",
+        dr_event_id=task.dr_event_id,
+        before=before,
+        after=after,
+    )
+    await write_outbox(
+        session,
+        aggregate_type="TASK",
+        aggregate_id=task.id,
+        event_type="TaskChanged",  # D-234 V1 union (API_CONTRACT.md:274)
+        payload={"change": "TASK_UPDATED", **after},
+        clock=clock,
+        dr_event_id=task.dr_event_id,
     )
     return task
