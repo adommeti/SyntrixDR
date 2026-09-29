@@ -262,3 +262,27 @@ async def test_list_is_404_for_an_invisible_event(
 
     assert r.status_code == 404
     await redis_client.delete(f"drcc:session:{sid}")
+
+
+@pytest.mark.api
+@pytest.mark.parametrize(
+    ("sequence_order", "status"),
+    [(2**31 - 1, 201), (-(2**31), 201), (2**31, 422), (-(2**31) - 1, 422)],
+)
+async def test_sequence_order_is_bounded_to_the_integer_column(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock, sequence_order: int, status: int
+) -> None:
+    """`work_streams.sequence_order` is INTEGER: out of range is a 422, never a DataError (500)."""
+    w = await build_world(session)
+    sid, csrf = await login(session, redis_client, clock, w.coordinator_id)
+
+    async with http(session, redis_client, clock) as c:
+        r = await c.post(
+            f"/api/v1/dr-events/{w.event_id}/work-streams",
+            cookies={"drcc_session": sid},
+            headers=headers(csrf),
+            json={"name": f"Stream {sequence_order}", "sequence_order": sequence_order},
+        )
+
+    assert r.status_code == status, r.text
+    await redis_client.delete(f"drcc:session:{sid}")

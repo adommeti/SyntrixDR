@@ -18,7 +18,8 @@ class CreateWorkStreamRequest(BaseModel):
     description: str | None = None
     lead_user_id: uuid.UUID | None = None
     owning_team_id: uuid.UUID | None = None
-    sequence_order: int | None = None
+    # INTEGER column: out of range is a 422 here, not a DataError (500) at flush.
+    sequence_order: int | None = Field(default=None, ge=-(2**31), le=2**31 - 1)
 
 
 class WorkStreamResponse(BaseModel):
