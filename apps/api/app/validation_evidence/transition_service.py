@@ -61,3 +61,40 @@ class ValidationTransitionService:
             after={"status": validation.status, "version": validation.version},
         )
         return validation
+
+    @staticmethod
+    async def close_for_cancelled_task(
+        session: AsyncSession,
+        *,
+        validation: Validation,
+        actor_id: uuid.UUID,
+        reason: str,
+        dr_event_id: uuid.UUID,
+        clock: Clock,
+    ) -> Validation:
+        """Called only from `TaskTransitionService.cancel` (already authorized, row locked). D-210's
+        only terminal states are APPROVED | REJECTED, and `validate` refuses a CANCELLED Task, so the
+        submission closes REJECTED here. `validator_user_id` stays NULL: nobody reviewed the work."""
+        if validation.status != "PENDING":
+            raise InvalidValidationTransitionError(validation.status)
+
+        now = clock.now()
+        before = {"status": validation.status}
+        validation.status = "REJECTED"
+        validation.reviewed_at = now
+        validation.note = f"Task cancelled: {reason}"
+        validation.version += 1
+        validation.updated_at = now
+        await session.flush()
+
+        await write_audit(
+            session,
+            actor_user_id=actor_id,
+            entity_type="VALIDATION",
+            entity_id=validation.id,
+            action="VALIDATION_CLOSED_TASK_CANCELLED",
+            dr_event_id=dr_event_id,
+            before=before,
+            after={"status": validation.status, "version": validation.version, "reason": reason},
+        )
+        return validation

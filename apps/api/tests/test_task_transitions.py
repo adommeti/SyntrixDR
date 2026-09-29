@@ -783,6 +783,54 @@ async def test_cancel_requires_a_reason(session: AsyncSession, clock: FakeClock,
     assert (await task_row(session, task_id)).status == "NOT_STARTED"
 
 
+async def _validations(session: AsyncSession, task_id: uuid.UUID) -> list[Any]:
+    return list(
+        (
+            await session.execute(
+                text(
+                    "SELECT id, status, validator_user_id, reviewed_at, approved_at, note FROM validations "
+                    "WHERE target_type = 'TASK' AND target_id = :t"
+                ),
+                {"t": task_id},
+            )
+        ).all()
+    )
+
+
+async def test_cancelling_a_submitted_task_closes_its_pending_validation(
+    session: AsyncSession, clock: FakeClock
+) -> None:
+    """D-210 gives a Validation only PENDING -> APPROVED | REJECTED, and `validate` refuses a
+    CANCELLED Task, so a PENDING row left behind could never be closed. Cancel closes it REJECTED in
+    the same transaction -- with no validator recorded (nobody reviewed the work) -- and audits why."""
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status="READY_FOR_VALIDATION")
+    [pending] = await _validations(session, task_id)
+
+    await run(session, "cancel", actor_id=w.admin_id, task_id=task_id, clock=clock, reason="Descoped")
+
+    [closed] = await _validations(session, task_id)
+    assert closed.id == pending.id
+    assert closed.status == "REJECTED"
+    assert (closed.validator_user_id, closed.approved_at) == (None, None)
+    assert closed.reviewed_at is not None
+    assert closed.note == "Task cancelled: Descoped"
+    assert await audit_actions(session, closed.id) == ["VALIDATION_CLOSED_TASK_CANCELLED"]
+    assert (await task_row(session, task_id)).status == "CANCELLED"
+
+
+@pytest.mark.parametrize("from_state", ["NOT_STARTED", "IN_PROGRESS", "BLOCKED"])
+async def test_cancelling_an_unsubmitted_task_touches_no_validation(
+    session: AsyncSession, clock: FakeClock, from_state: str
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status=from_state)
+
+    await run(session, "cancel", actor_id=w.admin_id, task_id=task_id, clock=clock, reason="Descoped")
+
+    assert await _validations(session, task_id) == []
+
+
 # --------------------------------------------------------------------------------------------
 # Optimistic concurrency
 # --------------------------------------------------------------------------------------------

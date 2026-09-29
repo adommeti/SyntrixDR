@@ -43,7 +43,11 @@ from app.tasks_dependencies.policies import (
 )
 from app.tasks_dependencies.queries import Readiness, readiness
 from app.users_teams_org.authorization import AuthorizationRequiredError
-from app.validation_evidence.commands import close_task_validation, open_task_validation
+from app.validation_evidence.commands import (
+    close_task_validation,
+    close_validation_for_cancelled_task,
+    open_task_validation,
+)
 from app.validation_evidence.ports import EvidenceCounter
 from app.validation_evidence.queries import get_pending_task_validation
 
@@ -466,6 +470,15 @@ class TaskTransitionService:
             raise OverrideReasonRequiredError("Cancelling a Task")
 
         before = _snapshot(task)
+        if task.status == "READY_FOR_VALIDATION":
+            await close_validation_for_cancelled_task(
+                session,
+                task_id=task.id,
+                actor_id=actor_id,
+                reason=clean_reason,
+                dr_event_id=task.dr_event_id,
+                clock=clock,
+            )
         task.status = "CANCELLED"
         return await _finish(
             session,
