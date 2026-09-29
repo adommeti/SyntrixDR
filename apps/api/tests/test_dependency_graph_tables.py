@@ -119,6 +119,19 @@ GRAPHS: dict[str, GraphCase] = {
         ready={"after_done": True, "after_gone": False, "held": False, "advisory_only": True},
         impact={"r": {"held", "held_further"}},
     ),
+    "independent branches proceed": GraphCase(
+        tasks={
+            "r": "BLOCKED",
+            "r_next": "NOT_STARTED",
+            "x": "COMPLETED",
+            "x_next": "NOT_STARTED",
+            "lone": "NOT_STARTED",
+        },
+        edges=[("r", "r_next", H), ("x", "x_next", H)],
+        ready={"r_next": False, "x_next": True, "lone": True},
+        blocked_by={"r_next": {"r"}, "x_next": set(), "lone": set()},
+        impact={"r": {"r_next"}},
+    ),
     "overlapping blocked paths": GraphCase(
         tasks={"r1": "BLOCKED", "r2": "BLOCKED", "s": "NOT_STARTED", "t": "NOT_STARTED"},
         edges=[("r1", "s", H), ("r2", "s", H), ("s", "t", H)],
