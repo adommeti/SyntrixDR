@@ -137,7 +137,8 @@ async def _finish(
     return milestone
 
 
-async def _auto_confirm_allowed(session: AsyncSession, milestone: Milestone) -> bool:
+async def auto_confirm_allowed(session: AsyncSession, milestone: Milestone) -> bool:
+    """D-225 `milestone.auto_confirm_allowed`, resolved for this Milestone's scopes (default false)."""
     application_id = None
     if milestone.dr_application_id is not None:
         dr_app = await get_dr_application(session, milestone.dr_application_id)
@@ -191,7 +192,7 @@ class MilestoneTransitionService:
             and target == READY
             and milestone.confirmation_mode == "AUTOMATIC"
             and any(is_required for _, is_required in contributors)
-            and await _auto_confirm_allowed(session, milestone)
+            and await auto_confirm_allowed(session, milestone)
         ):
             before = _snapshot(milestone)
             milestone.status = ACHIEVED

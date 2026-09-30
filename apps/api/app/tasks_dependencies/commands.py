@@ -13,7 +13,7 @@ from app.core.outbox import write_outbox
 from app.dr_events.errors import DrEventNotFoundError
 from app.dr_events.participants import enrol_participant, user_can_see_event
 from app.dr_events.queries import get_dr_application, get_event
-from app.tasks_dependencies.models import Task, TaskDependency
+from app.tasks_dependencies.models import MilestoneDependency, Task, TaskDependency
 from app.tasks_dependencies.policies import (
     REQUIREMENT_FIELDS,
     actor_may_create_task,
@@ -397,3 +397,41 @@ async def update_task_metadata(
         dr_event_id=task.dr_event_id,
     )
     return task
+
+
+async def add_milestone_gate(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID,
+    milestone_id: uuid.UUID,
+    successor_task_id: uuid.UUID,
+    strength: str,
+    clock: Clock,
+) -> MilestoneDependency:
+    """Application-layer entry to `DependencyService.add_milestone_gate` for other modules
+    (`milestones.commands`): same guards, graph lock and cycle check as every other edge. Imported
+    inside the function because `dependency_service` imports this module."""
+    from app.tasks_dependencies.dependency_service import DependencyService
+
+    return await DependencyService.add_milestone_gate(
+        session,
+        actor_id=actor_id,
+        milestone_id=milestone_id,
+        successor_task_id=successor_task_id,
+        strength=strength,
+        clock=clock,
+    )
+
+
+async def live_task_ids_in_event(
+    session: AsyncSession, dr_event_id: uuid.UUID, task_ids: list[uuid.UUID]
+) -> set[uuid.UUID]:
+    """The subset of `task_ids` that are live Tasks of this Event."""
+    if not task_ids:
+        return set()
+    rows = await session.execute(
+        select(Task.id).where(
+            Task.id.in_(task_ids), Task.dr_event_id == dr_event_id, Task.deleted_at.is_(None)
+        )
+    )
+    return {task_id for (task_id,) in rows}

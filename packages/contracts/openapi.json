@@ -404,6 +404,20 @@
         "title": "ColumnMappingResponse",
         "type": "object"
       },
+      "ConfirmMilestoneRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ConfirmMilestoneRequest",
+        "type": "object"
+      },
       "CreateApplicationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -554,6 +568,107 @@
           "password"
         ],
         "title": "CreateLocalUserRequest",
+        "type": "object"
+      },
+      "CreateMilestoneRequest": {
+        "additionalProperties": false,
+        "description": "`POST /dr-events/{id}/milestones` (API_CONTRACT.md:150). Contributions and gates are set here;\nthe contract has no Milestone edit route (BUILD-07.plan.md Risk #6).",
+        "properties": {
+          "confirmation_mode": {
+            "default": "MANUAL",
+            "enum": [
+              "MANUAL",
+              "AUTOMATIC"
+            ],
+            "title": "Confirmation Mode",
+            "type": "string"
+          },
+          "contributing_tasks": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MilestoneContributionIn"
+            },
+            "title": "Contributing Tasks",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dr_application_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dr Application Id"
+          },
+          "gates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MilestoneGateIn"
+            },
+            "title": "Gates",
+            "type": "array"
+          },
+          "name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner User Id"
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At"
+          },
+          "work_stream_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Stream Id"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateMilestoneRequest",
         "type": "object"
       },
       "CreatePlanRequest": {
@@ -1897,6 +2012,288 @@
           "is_active"
         ],
         "title": "MeResponse",
+        "type": "object"
+      },
+      "MilestoneContributionIn": {
+        "additionalProperties": false,
+        "properties": {
+          "is_required": {
+            "default": true,
+            "title": "Is Required",
+            "type": "boolean"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "title": "MilestoneContributionIn",
+        "type": "object"
+      },
+      "MilestoneContributionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "is_required": {
+            "title": "Is Required",
+            "type": "boolean"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "is_required"
+        ],
+        "title": "MilestoneContributionResponse",
+        "type": "object"
+      },
+      "MilestoneGateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "strength": {
+            "default": "HARD",
+            "enum": [
+              "HARD",
+              "ADVISORY"
+            ],
+            "title": "Strength",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "title": "MilestoneGateIn",
+        "type": "object"
+      },
+      "MilestoneGateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "milestone_dependency_id": {
+            "format": "uuid",
+            "title": "Milestone Dependency Id",
+            "type": "string"
+          },
+          "strength": {
+            "enum": [
+              "HARD",
+              "ADVISORY"
+            ],
+            "title": "Strength",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "milestone_dependency_id",
+          "task_id",
+          "strength"
+        ],
+        "title": "MilestoneGateResponse",
+        "type": "object"
+      },
+      "MilestoneListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/MilestoneResponse"
+            },
+            "title": "Milestones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "milestones"
+        ],
+        "title": "MilestoneListResponse",
+        "type": "object"
+      },
+      "MilestoneResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "achieved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Achieved At"
+          },
+          "confirmation_mode": {
+            "enum": [
+              "MANUAL",
+              "AUTOMATIC"
+            ],
+            "title": "Confirmation Mode",
+            "type": "string"
+          },
+          "contributing_tasks": {
+            "items": {
+              "$ref": "#/components/schemas/MilestoneContributionResponse"
+            },
+            "title": "Contributing Tasks",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dr_application_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dr Application Id"
+          },
+          "dr_event_id": {
+            "format": "uuid",
+            "title": "Dr Event Id",
+            "type": "string"
+          },
+          "gates": {
+            "items": {
+              "$ref": "#/components/schemas/MilestoneGateResponse"
+            },
+            "title": "Gates",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner User Id"
+          },
+          "ready_for_confirmation_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready For Confirmation At"
+          },
+          "status": {
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "AT_RISK",
+              "READY_FOR_CONFIRMATION",
+              "ACHIEVED",
+              "MISSED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "work_stream_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Stream Id"
+          }
+        },
+        "required": [
+          "id",
+          "dr_event_id",
+          "work_stream_id",
+          "dr_application_id",
+          "name",
+          "description",
+          "status",
+          "owner_user_id",
+          "confirmation_mode",
+          "ready_for_confirmation_at",
+          "achieved_at",
+          "target_at",
+          "version",
+          "created_at",
+          "updated_at",
+          "contributing_tasks",
+          "gates"
+        ],
+        "title": "MilestoneResponse",
         "type": "object"
       },
       "PasswordResetConfirmRequest": {
@@ -4707,6 +5104,100 @@
         ]
       }
     },
+    "/api/v1/dr-events/{event_id}/milestones": {
+      "get": {
+        "operationId": "list_milestones_route_api_v1_dr_events__event_id__milestones_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Milestones Route",
+        "tags": [
+          "milestones"
+        ]
+      },
+      "post": {
+        "operationId": "post_create_milestone_api_v1_dr_events__event_id__milestones_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMilestoneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create Milestone",
+        "tags": [
+          "milestones"
+        ]
+      }
+    },
     "/api/v1/dr-events/{event_id}/start-failback": {
       "post": {
         "operationId": "post_start_failback_api_v1_dr_events__event_id__start_failback_post",
@@ -5131,6 +5622,58 @@
         "summary": "Get Me Route",
         "tags": [
           "users_teams_org"
+        ]
+      }
+    },
+    "/api/v1/milestones/{milestone_id}/confirm": {
+      "post": {
+        "description": "API_CONTRACT.md:151 -- the human gate (D-225; also in the D-228 AI Act allowlist, which reaches\nthis same command service).",
+        "operationId": "post_confirm_milestone_api_v1_milestones__milestone_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "milestone_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Milestone Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmMilestoneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Confirm Milestone",
+        "tags": [
+          "milestones"
         ]
       }
     },

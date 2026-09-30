@@ -13,13 +13,14 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import FakeClock
+from app.milestones.routes import router as milestones_router
 from app.tasks_dependencies.routes import router as tasks_router
 from app.work_streams.routes import router as work_streams_router
 from tests.factories import build_world, http, login
 
 pytestmark = [pytest.mark.api]
 
-_ROUTERS = (tasks_router, work_streams_router)
+_ROUTERS = (tasks_router, work_streams_router, milestones_router)
 _T = str(uuid.uuid4())
 
 #: (method, path template) -> a body that passes schema validation, so the only thing missing is the key.
@@ -38,6 +39,8 @@ BODIES: dict[tuple[str, str], dict[str, Any] | None] = {
     ("DELETE", "/api/v1/task-dependencies/{dependency_id}"): None,
     ("POST", "/api/v1/dr-events/{event_id}/tasks"): {"title": "x", "phase": "FAILOVER", "owning_team_id": _T},
     ("POST", "/api/v1/dr-events/{event_id}/work-streams"): {"name": "x"},
+    ("POST", "/api/v1/dr-events/{event_id}/milestones"): {"name": "x"},
+    ("POST", "/api/v1/milestones/{milestone_id}/confirm"): {"expected_version": 1},
 }
 
 
@@ -61,7 +64,9 @@ async def test_command_without_an_idempotency_key_is_400(
 ) -> None:
     w = await build_world(session)
     sid, csrf = await login(session, redis_client, clock, w.admin_id)
-    url = path.format(task_id=uuid.uuid4(), dependency_id=uuid.uuid4(), event_id=w.event_id)
+    url = path.format(
+        task_id=uuid.uuid4(), dependency_id=uuid.uuid4(), milestone_id=uuid.uuid4(), event_id=w.event_id
+    )
 
     async with http(session, redis_client, clock) as c:
         r = await c.request(

@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import FakeClock
 from app.work_streams.commands import create_work_stream
-from tests.factories import World, build_world, count, depend, headers, http, login, seed_task
+from tests.factories import World, build_world, count, depend, headers, http, login, seed_milestone, seed_task
 
 pytestmark = [pytest.mark.api]
 
@@ -72,6 +72,13 @@ class Spec:
 def task_in(status: str, **seed: Any) -> Setup:
     async def setup(session: AsyncSession, w: World, clock: FakeClock) -> Ids:
         return {"task": await seed_task(session, w, status=status, **seed)}
+
+    return setup
+
+
+def milestone_in(status: str) -> Setup:
+    async def setup(session: AsyncSession, w: World, clock: FakeClock) -> Ids:
+        return {"milestone": await seed_milestone(session, w, status=status)}
 
     return setup
 
@@ -280,6 +287,38 @@ SPECS: dict[str, Spec] = {
             mutate=sql("UPDATE tasks SET status = 'COMPLETED' WHERE id = :t"),
         ),
         conflicts={"stale version": stale(title="Renamed")},
+    ),
+    "create milestone": Spec(
+        "POST",
+        lambda w, ids: f"/api/v1/dr-events/{w.event_id}/milestones",
+        lambda w, ids: {"name": "Network Ready", "work_stream_id": str(w.work_stream_id)},
+        nothing,
+        ok_actor="coordinator_id",
+        ok_status=201,
+        forbidden_actor="executor_id",
+        not_found=("stranger_id", Case(404, "DR_EVENT_NOT_FOUND")),
+        malformed=Case(422, "", body=lambda w, ids: {"name": "", "work_stream_id": str(w.work_stream_id)}),
+        guard=Case(422, "MILESTONE_CONTEXT_REQUIRED", body=body(name="Floating")),
+    ),
+    "confirm milestone": Spec(
+        "POST",
+        lambda w, ids: f"/api/v1/milestones/{ids['milestone']}/confirm",
+        body(expected_version=1),
+        milestone_in("READY_FOR_CONFIRMATION"),
+        ok_actor="coordinator_id",
+        ok_status=200,
+        forbidden_actor="executor_id",
+        not_found=("stranger_id", Case(404, "MILESTONE_NOT_FOUND")),
+        malformed=MISSING_VERSION,
+        conflicts={
+            "stale version": stale(),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=sql("UPDATE milestones SET status = 'IN_PROGRESS' WHERE dr_event_id = :e"),
+                body=body(expected_version=1),
+            ),
+        },
     ),
     "create task": Spec(
         "POST",
@@ -555,5 +594,10 @@ def test_every_command_in_the_matrix_has_every_mandatory_category() -> None:
     """401/403/404/422/replay are mandatory for every command; guard and 409 where the command has one."""
     for name, spec in SPECS.items():
         assert spec.ok_actor and spec.forbidden_actor and spec.not_found and spec.malformed, name
-    assert {n for n, s in SPECS.items() if s.guard is None} == {"remove dependency"}
-    assert {n for n, s in SPECS.items() if not s.conflicts} == {"create task", "remove dependency"}
+    # `confirm` has no guard beyond legality (its 409 row); creates have no version to go stale.
+    assert {n for n, s in SPECS.items() if s.guard is None} == {"remove dependency", "confirm milestone"}
+    assert {n for n, s in SPECS.items() if not s.conflicts} == {
+        "create task",
+        "remove dependency",
+        "create milestone",
+    }

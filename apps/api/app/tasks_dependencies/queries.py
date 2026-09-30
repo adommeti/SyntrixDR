@@ -556,3 +556,38 @@ async def owning_team_ids(session: AsyncSession, dr_event_id: uuid.UUID) -> list
         .distinct()
     )
     return list(result.scalars().all())
+
+
+@dataclass(frozen=True)
+class GateRow:
+    id: uuid.UUID
+    milestone_id: uuid.UUID
+    successor_task_id: uuid.UUID
+    strength: str
+
+
+async def gates_by_milestone(
+    session: AsyncSession, milestone_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[GateRow]]:
+    """Live gates of these Milestones onto live Tasks, for the Milestone read model."""
+    by_milestone: dict[uuid.UUID, list[GateRow]] = {m: [] for m in milestone_ids}
+    if not milestone_ids:
+        return by_milestone
+    rows = await session.execute(
+        select(
+            MilestoneDependency.id,
+            MilestoneDependency.milestone_id,
+            MilestoneDependency.successor_task_id,
+            MilestoneDependency.strength,
+        )
+        .join(Task, Task.id == MilestoneDependency.successor_task_id)
+        .where(
+            MilestoneDependency.milestone_id.in_(milestone_ids),
+            MilestoneDependency.deleted_at.is_(None),
+            Task.deleted_at.is_(None),
+        )
+        .order_by(MilestoneDependency.created_at, MilestoneDependency.id)
+    )
+    for gate_id, milestone_id, task_id, strength in rows:
+        by_milestone[milestone_id].append(GateRow(gate_id, milestone_id, task_id, strength))
+    return by_milestone

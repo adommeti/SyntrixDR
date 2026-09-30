@@ -473,6 +473,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dr-events/{event_id}/milestones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Milestones Route */
+        get: operations["list_milestones_route_api_v1_dr_events__event_id__milestones_get"];
+        put?: never;
+        /** Post Create Milestone */
+        post: operations["post_create_milestone_api_v1_dr_events__event_id__milestones_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dr-events/{event_id}/start-failback": {
         parameters: {
             query?: never;
@@ -605,6 +623,27 @@ export interface paths {
         get: operations["get_me_route_api_v1_me_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/milestones/{milestone_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Confirm Milestone
+         * @description API_CONTRACT.md:151 -- the human gate (D-225; also in the D-228 AI Act allowlist, which reaches
+         *     this same command service).
+         */
+        post: operations["post_confirm_milestone_api_v1_milestones__milestone_id__confirm_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1021,6 +1060,11 @@ export interface components {
             /** Target Field */
             target_field: string | null;
         };
+        /** ConfirmMilestoneRequest */
+        ConfirmMilestoneRequest: {
+            /** Expected Version */
+            expected_version: number;
+        };
         /** CreateApplicationRequest */
         CreateApplicationRequest: {
             /** Description */
@@ -1065,6 +1109,41 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * CreateMilestoneRequest
+         * @description `POST /dr-events/{id}/milestones` (API_CONTRACT.md:150). Contributions and gates are set here;
+         *     the contract has no Milestone edit route (BUILD-07.plan.md Risk #6).
+         */
+        CreateMilestoneRequest: {
+            /**
+             * Confirmation Mode
+             * @default MANUAL
+             * @enum {string}
+             */
+            confirmation_mode: "MANUAL" | "AUTOMATIC";
+            /**
+             * Contributing Tasks
+             * @default []
+             */
+            contributing_tasks: components["schemas"]["MilestoneContributionIn"][];
+            /** Description */
+            description?: string | null;
+            /** Dr Application Id */
+            dr_application_id?: string | null;
+            /**
+             * Gates
+             * @default []
+             */
+            gates: components["schemas"]["MilestoneGateIn"][];
+            /** Name */
+            name: string;
+            /** Owner User Id */
+            owner_user_id?: string | null;
+            /** Target At */
+            target_at?: string | null;
+            /** Work Stream Id */
+            work_stream_id?: string | null;
         };
         /** CreatePlanRequest */
         CreatePlanRequest: {
@@ -1527,6 +1606,121 @@ export interface components {
             is_active: boolean;
             /** Job Title */
             job_title: string | null;
+        };
+        /** MilestoneContributionIn */
+        MilestoneContributionIn: {
+            /**
+             * Is Required
+             * @default true
+             */
+            is_required: boolean;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+        };
+        /** MilestoneContributionResponse */
+        MilestoneContributionResponse: {
+            /** Is Required */
+            is_required: boolean;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+        };
+        /** MilestoneGateIn */
+        MilestoneGateIn: {
+            /**
+             * Strength
+             * @default HARD
+             * @enum {string}
+             */
+            strength: "HARD" | "ADVISORY";
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+        };
+        /** MilestoneGateResponse */
+        MilestoneGateResponse: {
+            /**
+             * Milestone Dependency Id
+             * Format: uuid
+             */
+            milestone_dependency_id: string;
+            /**
+             * Strength
+             * @enum {string}
+             */
+            strength: "HARD" | "ADVISORY";
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+        };
+        /** MilestoneListResponse */
+        MilestoneListResponse: {
+            /** Milestones */
+            milestones: components["schemas"]["MilestoneResponse"][];
+        };
+        /** MilestoneResponse */
+        MilestoneResponse: {
+            /** Achieved At */
+            achieved_at: string | null;
+            /**
+             * Confirmation Mode
+             * @enum {string}
+             */
+            confirmation_mode: "MANUAL" | "AUTOMATIC";
+            /** Contributing Tasks */
+            contributing_tasks: components["schemas"]["MilestoneContributionResponse"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** Dr Application Id */
+            dr_application_id: string | null;
+            /**
+             * Dr Event Id
+             * Format: uuid
+             */
+            dr_event_id: string;
+            /** Gates */
+            gates: components["schemas"]["MilestoneGateResponse"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner User Id */
+            owner_user_id: string | null;
+            /** Ready For Confirmation At */
+            ready_for_confirmation_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "NOT_STARTED" | "IN_PROGRESS" | "AT_RISK" | "READY_FOR_CONFIRMATION" | "ACHIEVED" | "MISSED";
+            /** Target At */
+            target_at: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+            /** Work Stream Id */
+            work_stream_id: string | null;
         };
         /** PasswordResetConfirmRequest */
         PasswordResetConfirmRequest: {
@@ -2993,6 +3187,72 @@ export interface operations {
             };
         };
     };
+    list_milestones_route_api_v1_dr_events__event_id__milestones_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MilestoneListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_milestone_api_v1_dr_events__event_id__milestones_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMilestoneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MilestoneResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_start_failback_api_v1_dr_events__event_id__start_failback_post: {
         parameters: {
             query?: never;
@@ -3299,6 +3559,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+        };
+    };
+    post_confirm_milestone_api_v1_milestones__milestone_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmMilestoneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
