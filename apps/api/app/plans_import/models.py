@@ -23,16 +23,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.applications_catalog.models import Application
 from app.core.database import Base
-from app.core.external_refs import milestones_table
 from app.core.target_types import target_type_enum
+from app.milestones.models import Milestone
 from app.tasks_dependencies.models import Task, TaskDependency
 
-# `Application`/`Task`/`TaskDependency` already have real ORM-mapped classes (unlike
-# `milestones`, whose owning module doesn't exist yet and uses the `core/external_refs.py` stub
-# pattern below) -- importing the class directly, not a stub, is correct here; see the longer
-# rationale in `dr_events/models.py` for why this is a deliberate exception to
-# `.claude/rules/python-api.md`'s cross-module rule, not an oversight.
-_ = (Application, Task, TaskDependency, milestones_table)  # FK-resolution registration
+# FK-target registration (ADR-038): the owning modules' real ORM classes, a deliberate exception to
+# the cross-module models rule -- see `dr_events/models.py` for the longer rationale.
+_ = (Application, Milestone, Task, TaskDependency)
 
 
 def _now_utc() -> datetime:

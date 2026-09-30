@@ -18,14 +18,13 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
-from app.core.external_refs import milestones_table
 from app.dr_events.models import DrApplication, DrEvent
 from app.users_teams_org.models import Team, User
 from app.work_streams.models import WorkStream
 
 # Registers every cross-module FK target on Base.metadata (ADR-038), so these models work in a
-# process that imports nothing else first. `milestones` is a stub until BUILD-07's real model.
-_ = (milestones_table, DrApplication, DrEvent, Team, User, WorkStream)
+# process that imports nothing else first. `milestones` is registered at the bottom of this file.
+_ = (DrApplication, DrEvent, Team, User, WorkStream)
 
 
 def _now_utc() -> datetime:
@@ -222,3 +221,11 @@ class MilestoneDependency(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now_utc)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# `milestone_dependencies.milestone_id` -> `milestones` (ADR-038). Imported last and as a module:
+# `milestones.models` imports this module back for `tasks`, and both sides only need the other
+# registered on Base.metadata, never a name from it, so the circular import is safe in either order.
+import app.milestones.models as _milestone_models  # noqa: E402
+
+_ = _milestone_models

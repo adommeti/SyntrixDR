@@ -22,8 +22,8 @@ from app.dr_events.queries import get_event
 from app.tasks_dependencies.models import MilestoneDependency, Task, TaskDependency
 from app.work_streams.queries import list_monitoring_stream_ids
 
-#: select()-only view of `milestones`. BUILD-07 owns the real model (BUILD-06.plan.md Risk #13); this
-#: isn't on `Base.metadata`, so it can't collide with `core/external_refs.py`'s FK stub or that model.
+#: select()-only view of `milestones` (owned by `app.milestones`). Task code reads it here instead of
+#: importing that module, which itself reads Task state through this module -- no import cycle.
 milestones_view = table(
     "milestones",
     column("id", PgUUID(as_uuid=True)),
