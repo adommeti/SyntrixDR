@@ -66,6 +66,13 @@ async def _task_scopes(session: AsyncSession, task: Task) -> list[Scope]:
     )
 
 
+async def can_in_task_scope(
+    session: AsyncSession, actor_id: uuid.UUID, capability: Capability, task: Task
+) -> bool:
+    """Public form of the scope resolution below, for other modules' policies (via `queries`)."""
+    return await _can_in_any_scope(session, actor_id, capability, await _task_scopes(session, task))
+
+
 def _grants_work_stream_lead(capability: Capability) -> bool:
     return GRANTS.get(capability, {}).get("WORK_STREAM_LEAD") in (True, "SCOPE")
 

@@ -13,14 +13,17 @@ import uuid
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
 
-from sqlalchemy import Boolean, DateTime, Select, Text, column, select, table
+from sqlalchemy import Boolean, DateTime, Select, Text, column, func, select, table
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockers.queries import count_active_blockers_by_task
+from app.core.audit import AuditEvent
 from app.dr_events.participants import user_can_see_event
 from app.dr_events.queries import get_event
 from app.tasks_dependencies.models import MilestoneDependency, Task, TaskDependency
+from app.tasks_dependencies.policies import can_in_task_scope
+from app.users_teams_org.authorization import Capability
 from app.work_streams.queries import list_monitoring_stream_ids
 
 #: select()-only view of `milestones` (owned by `app.milestones`). Task code reads it here instead of
@@ -591,3 +594,84 @@ async def gates_by_milestone(
     for gate_id, milestone_id, task_id, strength in rows:
         by_milestone[milestone_id].append(GateRow(gate_id, milestone_id, task_id, strength))
     return by_milestone
+
+
+async def lock_visible_task(session: AsyncSession, actor_id: uuid.UUID, task_id: uuid.UUID) -> Task | None:
+    """The live Task under `FOR UPDATE` (populate_existing: the version check must see the locked row),
+    or None when missing or in an Event the actor can't see -- both are the same 404."""
+    task = (
+        await session.execute(
+            select(Task)
+            .where(Task.id == task_id, Task.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if task is None or not await user_can_see_event(session, actor_id, task.dr_event_id):
+        return None
+    return task
+
+
+async def holds_in_task_scope(
+    session: AsyncSession, actor_id: uuid.UUID, capability: Capability, task: Task
+) -> bool:
+    """`capability` in any scope covering this Task -- Owning Team, Work Stream (incl. its designated
+    Lead), Application -- the same resolution the Task commands use (ADR-042)."""
+    return await can_in_task_scope(session, actor_id, capability, task)
+
+
+@dataclass(frozen=True)
+class VersionedChange:
+    version: int
+    action: str
+    actor_user_id: uuid.UUID | None
+    metadata: dict[str, object]
+
+
+async def task_changes_after(
+    session: AsyncSession, task_id: uuid.UUID, version: int
+) -> list[VersionedChange]:
+    """Every Task audit row that moved the version past `version`, oldest first. Each versioned Task
+    change writes exactly one such row (`transition_service._finish`, `commands.apply_assignment`,
+    `commands.update_task_metadata`); D-214 reads them to see what came between."""
+    rows = await session.execute(
+        select(AuditEvent.after_data, AuditEvent.action, AuditEvent.actor_user_id, AuditEvent.metadata_)
+        .where(
+            AuditEvent.entity_type == "TASK",
+            AuditEvent.entity_id == task_id,
+            AuditEvent.after_data["version"].as_integer() > version,
+        )
+        .order_by(AuditEvent.after_data["version"].as_integer())
+    )
+    return [
+        VersionedChange(int(after["version"]), action, actor, dict(metadata or {}))
+        for after, action, actor, metadata in rows
+    ]
+
+
+OPEN_TASK_STATUSES = ("NOT_STARTED", "IN_PROGRESS", "BLOCKED", "READY_FOR_VALIDATION")
+
+
+async def open_task_counts(
+    session: AsyncSession,
+    *,
+    event_ids: Select[tuple[uuid.UUID]] | list[uuid.UUID],
+    owning_team_id: uuid.UUID | None = None,
+    assignee_ids: list[uuid.UUID] | None = None,
+) -> list[tuple[uuid.UUID | None, uuid.UUID, str, int]]:
+    """(assignee, owning Team, status, count) over live, non-terminal Tasks in `event_ids`, optionally
+    limited to one Owning Team and/or some assignees. Computed live -- nothing is stored (D-212)."""
+    stmt = (
+        select(Task.current_assignee_user_id, Task.owning_team_id, Task.status, func.count())
+        .where(
+            Task.dr_event_id.in_(event_ids),
+            Task.deleted_at.is_(None),
+            Task.status.in_(OPEN_TASK_STATUSES),
+        )
+        .group_by(Task.current_assignee_user_id, Task.owning_team_id, Task.status)
+    )
+    if owning_team_id is not None:
+        stmt = stmt.where(Task.owning_team_id == owning_team_id)
+    if assignee_ids is not None:
+        stmt = stmt.where(Task.current_assignee_user_id.in_(assignee_ids))
+    return [(a, t, s, int(n)) for a, t, s, n in await session.execute(stmt)]

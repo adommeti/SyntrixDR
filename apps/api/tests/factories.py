@@ -29,6 +29,7 @@ from app.identity_auth.dependencies import get_clock, get_session_store
 from app.identity_auth.models import SessionRecord
 from app.identity_auth.session_store import RedisSessionStore
 from app.milestones.routes import router as milestones_router
+from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.commands import create_draft_task
 from app.tasks_dependencies.routes import router as tasks_router
 from app.users_teams_org.models import RoleAssignment
@@ -379,6 +380,7 @@ def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> F
     app.include_router(dr_events_router)
     app.include_router(work_streams_router)
     app.include_router(milestones_router)
+    app.include_router(resources_skills_router)
 
     async def _session_override():  # noqa: ANN202
         yield session

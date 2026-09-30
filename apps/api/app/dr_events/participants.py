@@ -126,3 +126,14 @@ async def user_can_see_event(session: AsyncSession, user_id: uuid.UUID, dr_event
     if await AuthorizationService.is_global_readonly(session, user_id):
         return True
     return await is_participant(session, dr_event_id, user_id)
+
+
+async def list_participant_user_ids(session: AsyncSession, dr_event_id: uuid.UUID) -> list[uuid.UUID]:
+    """Every user with an active participant row in this Event (any source), in stable order."""
+    rows = await session.execute(
+        select(DrEventParticipant.user_id)
+        .where(DrEventParticipant.dr_event_id == dr_event_id, DrEventParticipant.removed_at.is_(None))
+        .distinct()
+        .order_by(DrEventParticipant.user_id)
+    )
+    return [user_id for (user_id,) in rows]

@@ -203,6 +203,27 @@
         "title": "ApplicationResponse",
         "type": "object"
       },
+      "AssignTaskRequest": {
+        "additionalProperties": false,
+        "description": "`POST /tasks/{id}/assign` (API_CONTRACT.md:165). No unassign: the contract only assigns\n(BUILD-07.plan.md Risk B4).",
+        "properties": {
+          "assignee_user_id": {
+            "format": "uuid",
+            "title": "Assignee User Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assignee_user_id",
+          "expected_version"
+        ],
+        "title": "AssignTaskRequest",
+        "type": "object"
+      },
       "BlockTaskRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1612,6 +1633,83 @@
         "title": "DrEventResponse",
         "type": "object"
       },
+      "EventPersonResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "open_tasks": {
+            "$ref": "#/components/schemas/OpenTaskCounts"
+          },
+          "open_total": {
+            "title": "Open Total",
+            "type": "integer"
+          },
+          "skills": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Skills",
+            "type": "array"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/TeamRef"
+            },
+            "title": "Teams",
+            "type": "array"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name",
+          "open_tasks",
+          "open_total",
+          "teams",
+          "skills"
+        ],
+        "title": "EventPersonResponse",
+        "type": "object"
+      },
+      "EventResourcesResponse": {
+        "additionalProperties": false,
+        "description": "`GET /dr-events/{id}/resources` (API_CONTRACT.md:143, D-212).",
+        "properties": {
+          "dr_event_id": {
+            "format": "uuid",
+            "title": "Dr Event Id",
+            "type": "string"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/EventPersonResponse"
+            },
+            "title": "People",
+            "type": "array"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/TeamLoadResponse"
+            },
+            "title": "Teams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dr_event_id",
+          "people",
+          "teams"
+        ],
+        "title": "EventResourcesResponse",
+        "type": "object"
+      },
       "ExpectedVersionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2294,6 +2392,36 @@
           "gates"
         ],
         "title": "MilestoneResponse",
+        "type": "object"
+      },
+      "OpenTaskCounts": {
+        "additionalProperties": false,
+        "description": "Open (non-terminal) Tasks by status; `Ready` is derived and never counted as a status.",
+        "properties": {
+          "BLOCKED": {
+            "title": "Blocked",
+            "type": "integer"
+          },
+          "IN_PROGRESS": {
+            "title": "In Progress",
+            "type": "integer"
+          },
+          "NOT_STARTED": {
+            "title": "Not Started",
+            "type": "integer"
+          },
+          "READY_FOR_VALIDATION": {
+            "title": "Ready For Validation",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "NOT_STARTED",
+          "IN_PROGRESS",
+          "BLOCKED",
+          "READY_FOR_VALIDATION"
+        ],
+        "title": "OpenTaskCounts",
         "type": "object"
       },
       "PasswordResetConfirmRequest": {
@@ -3278,6 +3406,89 @@
         "title": "TeamListResponse",
         "type": "object"
       },
+      "TeamLoadResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "open_tasks": {
+            "$ref": "#/components/schemas/OpenTaskCounts"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "unassigned_open": {
+            "title": "Unassigned Open",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "team_id",
+          "name",
+          "open_tasks",
+          "unassigned_open"
+        ],
+        "title": "TeamLoadResponse",
+        "type": "object"
+      },
+      "TeamMemberLoadResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "is_manager": {
+            "title": "Is Manager",
+            "type": "boolean"
+          },
+          "open_tasks": {
+            "$ref": "#/components/schemas/OpenTaskCounts"
+          },
+          "open_total": {
+            "title": "Open Total",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name",
+          "open_tasks",
+          "open_total",
+          "is_manager"
+        ],
+        "title": "TeamMemberLoadResponse",
+        "type": "object"
+      },
+      "TeamRef": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_id",
+          "name"
+        ],
+        "title": "TeamRef",
+        "type": "object"
+      },
       "TeamResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3325,10 +3536,21 @@
       },
       "TeamWorkloadResponse": {
         "additionalProperties": false,
+        "description": "`GET /teams/{id}/workload` (API_CONTRACT.md:91). Keeps BUILD-02's `team_id`/`team_name`/\n`member_count` and adds the live roll-up.",
         "properties": {
           "member_count": {
             "title": "Member Count",
             "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/TeamMemberLoadResponse"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "owned_open_tasks": {
+            "$ref": "#/components/schemas/OpenTaskCounts"
           },
           "team_id": {
             "format": "uuid",
@@ -3338,12 +3560,19 @@
           "team_name": {
             "title": "Team Name",
             "type": "string"
+          },
+          "unassigned_open": {
+            "title": "Unassigned Open",
+            "type": "integer"
           }
         },
         "required": [
           "team_id",
           "team_name",
-          "member_count"
+          "member_count",
+          "owned_open_tasks",
+          "unassigned_open",
+          "members"
         ],
         "title": "TeamWorkloadResponse",
         "type": "object"
@@ -3800,6 +4029,20 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VolunteerTaskRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "VolunteerTaskRequest",
         "type": "object"
       },
       "WorkStreamListResponse": {
@@ -5198,6 +5441,49 @@
         ]
       }
     },
+    "/api/v1/dr-events/{event_id}/resources": {
+      "get": {
+        "operationId": "get_event_resources_route_api_v1_dr_events__event_id__resources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResourcesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Event Resources Route",
+        "tags": [
+          "resources_skills"
+        ]
+      }
+    },
     "/api/v1/dr-events/{event_id}/start-failback": {
       "post": {
         "operationId": "post_start_failback_api_v1_dr_events__event_id__start_failback_post",
@@ -6007,6 +6293,58 @@
         ]
       }
     },
+    "/api/v1/tasks/{task_id}/assign": {
+      "post": {
+        "description": "API_CONTRACT.md:165. A D-214 Manager-precedence write is 200, never 409.",
+        "operationId": "post_assign_task_api_v1_tasks__task_id__assign_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Assign Task",
+        "tags": [
+          "resources_skills"
+        ]
+      }
+    },
     "/api/v1/tasks/{task_id}/block": {
       "post": {
         "operationId": "post_block_task_api_v1_tasks__task_id__block_post",
@@ -6313,6 +6651,57 @@
         ]
       }
     },
+    "/api/v1/tasks/{task_id}/volunteer": {
+      "post": {
+        "operationId": "post_volunteer_task_api_v1_tasks__task_id__volunteer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteerTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Volunteer Task",
+        "tags": [
+          "resources_skills"
+        ]
+      }
+    },
     "/api/v1/teams": {
       "get": {
         "operationId": "list_teams_route_api_v1_teams_get",
@@ -6373,7 +6762,7 @@
         },
         "summary": "Get Team Workload Route",
         "tags": [
-          "users_teams_org"
+          "resources_skills"
         ]
       }
     },

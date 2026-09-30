@@ -435,3 +435,70 @@ async def live_task_ids_in_event(
         )
     )
     return {task_id for (task_id,) in rows}
+
+
+async def apply_assignment(
+    session: AsyncSession,
+    *,
+    task: Task,
+    assignee_user_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    action: str,
+    metadata: Mapping[str, object],
+    affected_user_ids: list[uuid.UUID],
+    clock: Clock,
+) -> Task:
+    """The one writer of `current_assignee_user_id` (API_CONTRACT.md:165-166). The caller
+    (`resources_skills.AssignmentService`) has locked `task`, authorized, checked version and state.
+    Owning Team never changes (DATA_MODEL.md invariant 8). The new assignee joins the Event
+    (D-222 `TASK_ASSIGNEE`); `AssignmentChanged` names who is affected, for BUILD-08's fan-out."""
+    previous = task.current_assignee_user_id
+    before: dict[str, object] = {
+        "current_assignee_user_id": str(previous) if previous else None,
+        "version": task.version,
+    }
+    task.current_assignee_user_id = assignee_user_id
+    task.version += 1
+    task.updated_at = clock.now()
+    await session.flush()
+    after: dict[str, object] = {"current_assignee_user_id": str(assignee_user_id), "version": task.version}
+    await write_audit(
+        session,
+        actor_user_id=actor_id,
+        entity_type="TASK",
+        entity_id=task.id,
+        action=action,
+        dr_event_id=task.dr_event_id,
+        before=before,
+        after=after,
+        metadata=dict(metadata),
+    )
+    await enrol_participant(
+        session, task.dr_event_id, assignee_user_id, "TASK_ASSIGNEE", added_by_user_id=actor_id
+    )
+    await write_outbox(
+        session,
+        aggregate_type="TASK",
+        aggregate_id=task.id,
+        event_type="TaskChanged",  # D-234 V1 union
+        payload={"change": action, **after},
+        clock=clock,
+        dr_event_id=task.dr_event_id,
+    )
+    await write_outbox(
+        session,
+        aggregate_type="TASK",
+        aggregate_id=task.id,
+        event_type="AssignmentChanged",  # D-234 V1 union
+        payload={
+            "change": action,
+            "task_id": str(task.id),
+            "previous_assignee_user_id": before["current_assignee_user_id"],
+            **after,
+            **{k: v for k, v in metadata.items() if k == "conflict_resolution"},
+            "affected_user_ids": [str(u) for u in dict.fromkeys(affected_user_ids)],
+        },
+        clock=clock,
+        dr_event_id=task.dr_event_id,
+    )
+    return task

@@ -43,14 +43,6 @@ class TeamListResponse(BaseModel):
     teams: list[TeamResponse]
 
 
-class TeamWorkloadResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    team_id: uuid.UUID
-    team_name: str
-    member_count: int
-
-
 class CreateLocalUserRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

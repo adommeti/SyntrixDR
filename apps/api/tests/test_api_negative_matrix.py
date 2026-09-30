@@ -83,6 +83,14 @@ def milestone_in(status: str) -> Setup:
     return setup
 
 
+async def unassigned_task(session: AsyncSession, w: World, clock: FakeClock) -> Ids:
+    task_id = await seed_task(session, w)
+    await session.execute(
+        text("UPDATE tasks SET current_assignee_user_id = NULL WHERE id = :t"), {"t": task_id}
+    )
+    return {"task": task_id}
+
+
 def sql(statement: str) -> Mutate:
     """Run one statement with :t (the Task), :e (the Event) and :u (the System Owner) bound."""
 
@@ -318,6 +326,56 @@ SPECS: dict[str, Spec] = {
                 mutate=sql("UPDATE milestones SET status = 'IN_PROGRESS' WHERE dr_event_id = :e"),
                 body=body(expected_version=1),
             ),
+        },
+    ),
+    "assign": Spec(
+        "POST",
+        task_path("assign"),
+        lambda w, ids: {"assignee_user_id": str(w.teammate_id), "expected_version": 1},
+        task_in("NOT_STARTED"),
+        ok_actor="coordinator_id",
+        ok_status=200,
+        forbidden_actor="outsider_id",
+        not_found=TASK_404,
+        malformed=Case(422, "", body=body(expected_version=1)),
+        guard=Case(
+            404,
+            "USER_NOT_FOUND",
+            body=lambda w, ids: {"assignee_user_id": str(uuid.uuid4()), "expected_version": 1},
+        ),
+        conflicts={
+            "stale version": Case(
+                409,
+                "CONCURRENCY_CONFLICT",
+                body=lambda w, ids: {"assignee_user_id": str(w.teammate_id), "expected_version": 9},
+            ),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=sql("UPDATE tasks SET status = 'COMPLETED' WHERE id = :t"),
+                body=lambda w, ids: {"assignee_user_id": str(w.teammate_id), "expected_version": 1},
+            ),
+        },
+    ),
+    "volunteer": Spec(
+        "POST",
+        task_path("volunteer"),
+        body(expected_version=1),
+        unassigned_task,
+        ok_actor="outsider_id",
+        ok_status=200,
+        forbidden_actor="system_owner_id",
+        not_found=TASK_404,
+        malformed=MISSING_VERSION,
+        guard=Case(
+            409,
+            "TASK_ALREADY_ASSIGNED",
+            mutate=sql("UPDATE tasks SET current_assignee_user_id = :u WHERE id = :t"),
+            body=body(expected_version=1),
+        ),
+        conflicts={
+            "stale version": stale(),
+            "illegal transition": illegal_from("CANCELLED"),
         },
     ),
     "create task": Spec(

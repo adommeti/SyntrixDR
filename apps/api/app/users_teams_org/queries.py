@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.users_teams_org.models import RoleAssignment, Team, TeamMembership, User
+from app.users_teams_org.models import RoleAssignment, Skill, Team, TeamMembership, User, UserSkill
 
 
 async def find_local_user_id_by_email(session: AsyncSession, email: str) -> uuid.UUID | None:
@@ -99,23 +99,6 @@ async def find_active_user_by_display_name(session: AsyncSession, display_name: 
     return matches[0]
 
 
-async def get_team_workload(session: AsyncSession, team_id: uuid.UUID) -> dict[str, object] | None:
-    """Team resource roll-up (API_CONTRACT `GET /api/v1/teams/{id}/workload`).
-
-    V1: member count only — Task/assignment roll-up needs tasks_dependencies, a later BUILD.
-    """
-    team_result = await session.execute(select(Team).where(Team.id == team_id, Team.deleted_at.is_(None)))
-    team = team_result.scalar_one_or_none()
-    if team is None:
-        return None
-
-    member_count_result = await session.execute(
-        select(TeamMembership).where(TeamMembership.team_id == team_id, TeamMembership.deleted_at.is_(None))
-    )
-    member_count = len(member_count_result.scalars().all())
-    return {"team_id": team.id, "team_name": team.name, "member_count": member_count}
-
-
 async def has_active_role(
     session: AsyncSession,
     user_id: uuid.UUID,
@@ -186,3 +169,51 @@ async def live_team_ids(session: AsyncSession, team_ids: list[uuid.UUID]) -> set
         return set()
     result = await session.execute(select(Team.id).where(Team.id.in_(team_ids), Team.deleted_at.is_(None)))
     return set(result.scalars().all())
+
+
+async def display_names(session: AsyncSession, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not user_ids:
+        return {}
+    rows = await session.execute(select(User.id, User.display_name).where(User.id.in_(user_ids)))
+    return {user_id: name for user_id, name in rows}
+
+
+async def active_teams_of(
+    session: AsyncSession, user_ids: list[uuid.UUID], *, at: datetime
+) -> dict[uuid.UUID, list[tuple[uuid.UUID, str]]]:
+    """(team_id, name) of every live Team each user is an active member of (same rule as
+    `is_active_team_member`), name-ordered."""
+    by_user: dict[uuid.UUID, list[tuple[uuid.UUID, str]]] = {u: [] for u in user_ids}
+    if not user_ids:
+        return by_user
+    rows = await session.execute(
+        select(TeamMembership.user_id, Team.id, Team.name)
+        .join(Team, Team.id == TeamMembership.team_id)
+        .where(
+            TeamMembership.user_id.in_(user_ids),
+            TeamMembership.deleted_at.is_(None),
+            Team.deleted_at.is_(None),
+            or_(TeamMembership.effective_from.is_(None), TeamMembership.effective_from <= at),
+            or_(TeamMembership.effective_to.is_(None), TeamMembership.effective_to >= at),
+        )
+        .order_by(Team.name)
+    )
+    for user_id, team_id, name in rows:
+        by_user[user_id].append((team_id, name))
+    return by_user
+
+
+async def skill_names_of(session: AsyncSession, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
+    """Active skill names per user (V1 tags, no proficiency -- D-218)."""
+    by_user: dict[uuid.UUID, list[str]] = {u: [] for u in user_ids}
+    if not user_ids:
+        return by_user
+    rows = await session.execute(
+        select(UserSkill.user_id, Skill.name)
+        .join(Skill, Skill.id == UserSkill.skill_id)
+        .where(UserSkill.user_id.in_(user_ids), Skill.is_active.is_(True))
+        .order_by(Skill.name)
+    )
+    for user_id, name in rows:
+        by_user[user_id].append(name)
+    return by_user

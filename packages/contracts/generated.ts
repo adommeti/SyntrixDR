@@ -491,6 +491,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dr-events/{event_id}/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event Resources Route */
+        get: operations["get_event_resources_route_api_v1_dr_events__event_id__resources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dr-events/{event_id}/start-failback": {
         parameters: {
             query?: never;
@@ -761,6 +778,26 @@ export interface paths {
         patch: operations["patch_task_api_v1_tasks__task_id__patch"];
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Assign Task
+         * @description API_CONTRACT.md:165. A D-214 Manager-precedence write is 200, never 409.
+         */
+        post: operations["post_assign_task_api_v1_tasks__task_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/block": {
         parameters: {
             query?: never;
@@ -857,6 +894,23 @@ export interface paths {
         put?: never;
         /** Post Validate Task */
         post: operations["post_validate_task_api_v1_tasks__task_id__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/volunteer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Volunteer Task */
+        post: operations["post_volunteer_task_api_v1_tasks__task_id__volunteer_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -996,6 +1050,20 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+        };
+        /**
+         * AssignTaskRequest
+         * @description `POST /tasks/{id}/assign` (API_CONTRACT.md:165). No unassign: the contract only assigns
+         *     (BUILD-07.plan.md Risk B4).
+         */
+        AssignTaskRequest: {
+            /**
+             * Assignee User Id
+             * Format: uuid
+             */
+            assignee_user_id: string;
+            /** Expected Version */
+            expected_version: number;
         };
         /** BlockTaskRequest */
         BlockTaskRequest: {
@@ -1445,6 +1513,38 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** EventPersonResponse */
+        EventPersonResponse: {
+            /** Display Name */
+            display_name: string;
+            open_tasks: components["schemas"]["OpenTaskCounts"];
+            /** Open Total */
+            open_total: number;
+            /** Skills */
+            skills: string[];
+            /** Teams */
+            teams: components["schemas"]["TeamRef"][];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * EventResourcesResponse
+         * @description `GET /dr-events/{id}/resources` (API_CONTRACT.md:143, D-212).
+         */
+        EventResourcesResponse: {
+            /**
+             * Dr Event Id
+             * Format: uuid
+             */
+            dr_event_id: string;
+            /** People */
+            people: components["schemas"]["EventPersonResponse"][];
+            /** Teams */
+            teams: components["schemas"]["TeamLoadResponse"][];
+        };
         /** ExpectedVersionRequest */
         ExpectedVersionRequest: {
             /** Expected Version */
@@ -1721,6 +1821,20 @@ export interface components {
             version: number;
             /** Work Stream Id */
             work_stream_id: string | null;
+        };
+        /**
+         * OpenTaskCounts
+         * @description Open (non-terminal) Tasks by status; `Ready` is derived and never counted as a status.
+         */
+        OpenTaskCounts: {
+            /** Blocked */
+            BLOCKED: number;
+            /** In Progress */
+            IN_PROGRESS: number;
+            /** Not Started */
+            NOT_STARTED: number;
+            /** Ready For Validation */
+            READY_FOR_VALIDATION: number;
         };
         /** PasswordResetConfirmRequest */
         PasswordResetConfirmRequest: {
@@ -2065,6 +2179,44 @@ export interface components {
             /** Teams */
             teams: components["schemas"]["TeamResponse"][];
         };
+        /** TeamLoadResponse */
+        TeamLoadResponse: {
+            /** Name */
+            name: string;
+            open_tasks: components["schemas"]["OpenTaskCounts"];
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Unassigned Open */
+            unassigned_open: number;
+        };
+        /** TeamMemberLoadResponse */
+        TeamMemberLoadResponse: {
+            /** Display Name */
+            display_name: string;
+            /** Is Manager */
+            is_manager: boolean;
+            open_tasks: components["schemas"]["OpenTaskCounts"];
+            /** Open Total */
+            open_total: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** TeamRef */
+        TeamRef: {
+            /** Name */
+            name: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+        };
         /** TeamResponse */
         TeamResponse: {
             /** Description */
@@ -2079,10 +2231,17 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** TeamWorkloadResponse */
+        /**
+         * TeamWorkloadResponse
+         * @description `GET /teams/{id}/workload` (API_CONTRACT.md:91). Keeps BUILD-02's `team_id`/`team_name`/
+         *     `member_count` and adds the live roll-up.
+         */
         TeamWorkloadResponse: {
             /** Member Count */
             member_count: number;
+            /** Members */
+            members: components["schemas"]["TeamMemberLoadResponse"][];
+            owned_open_tasks: components["schemas"]["OpenTaskCounts"];
             /**
              * Team Id
              * Format: uuid
@@ -2090,6 +2249,8 @@ export interface components {
             team_id: string;
             /** Team Name */
             team_name: string;
+            /** Unassigned Open */
+            unassigned_open: number;
         };
         /** TierListResponse */
         TierListResponse: {
@@ -2244,6 +2405,11 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VolunteerTaskRequest */
+        VolunteerTaskRequest: {
+            /** Expected Version */
+            expected_version: number;
         };
         /** WorkStreamListResponse */
         WorkStreamListResponse: {
@@ -3253,6 +3419,37 @@ export interface operations {
             };
         };
     };
+    get_event_resources_route_api_v1_dr_events__event_id__resources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventResourcesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_start_failback_api_v1_dr_events__event_id__start_failback_post: {
         parameters: {
             query?: never;
@@ -3847,6 +4044,41 @@ export interface operations {
             };
         };
     };
+    post_assign_task_api_v1_tasks__task_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_block_task_api_v1_tasks__task_id__block_post: {
         parameters: {
             query?: never;
@@ -4034,6 +4266,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ValidateTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_volunteer_task_api_v1_tasks__task_id__volunteer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteerTaskRequest"];
             };
         };
         responses: {
