@@ -979,7 +979,7 @@ async def test_cancel_from_terminal_state_rejected(
             json={"expected_version": 1, "reason": "too late"},
         )
 
-    assert response.status_code == 422
+    assert response.status_code == 409  # API_CONTRACT.md:49 (was 422 before BUILD-06 fixed the drift)
     assert response.json()["error"]["code"] == "INVALID_TRANSITION"
     await redis_client.delete(f"drcc:session:{session_id}")
 
@@ -1013,7 +1013,7 @@ async def test_illegal_transition_rejected(
             json={"expected_version": 1},
         )
 
-    assert response.status_code == 422
+    assert response.status_code == 409  # API_CONTRACT.md:49 (was 422 before BUILD-06 fixed the drift)
     assert response.json()["error"]["code"] == "INVALID_TRANSITION"
     await redis_client.delete(f"drcc:session:{session_id}")
 
@@ -1634,5 +1634,10 @@ async def test_activate_succeeds_with_warning_only_failure_and_no_override(
         {"eid": event_id},
     )
     after = audit_row.one().after_data
-    assert after["readiness_warnings"] == ["readiness.primary_business_owner"]
+    # BUILD-06 made `monitoring_task_present` computable; this Event has no MONITORING Task, so D-224's
+    # WARNING rightly joins the list. Still warning-only: activation succeeds with no override.
+    assert after["readiness_warnings"] == [
+        "readiness.primary_business_owner",
+        "readiness.monitoring_task_present",
+    ]
     await redis_client.delete(f"drcc:session:{session_id}")

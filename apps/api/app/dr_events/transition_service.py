@@ -9,14 +9,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
 from app.core.clock import Clock, SystemClock
-from app.core.errors import AppError, ConcurrencyConflictError
+from app.core.errors import AppError, ConcurrencyConflictError, OverrideReasonRequiredError
 from app.core.outbox import write_outbox
-from app.dr_events.commands import DrEventNotFoundError
+from app.dr_events.commands import DrEventNotFoundError, record_override
 from app.dr_events.models import DrApplication, DrEvent, Override
 from app.dr_events.queries import has_non_terminal_children
-from app.dr_events.readiness_service import evaluate_readiness
+from app.dr_events.readiness_service import NON_OVERRIDABLE_KEYS, evaluate_readiness
 from app.plans_import.commands import capture_baseline_snapshot
+from app.tasks_dependencies.queries import unfinished_monitoring_task_ids
 from app.users_teams_org.authorization import AuthorizationService, Capability
+
+
+class MonitoringClosureWarningError(AppError):
+    """D-227 / API_CONTRACT.md `close` row: overridable only by an audited closure exception."""
+
+    code = "MONITORING_CLOSURE_WARNING"
+    status_code = 409
+
+    def __init__(self, task_ids: list[uuid.UUID]) -> None:
+        super().__init__(
+            "Monitoring Work Stream Tasks are still open. Complete or cancel them, or close with a "
+            "closure_exception and a reason.",
+            details={"monitoring_task_ids": [str(t) for t in task_ids]},
+        )
 
 
 class ReadinessHardStopError(AppError):
@@ -46,7 +61,7 @@ _TERMINAL_STATES = frozenset({"CLOSED", "CANCELLED"})
 
 class InvalidEventTransitionError(AppError):
     code = "INVALID_TRANSITION"
-    status_code = 422
+    status_code = 409  # API_CONTRACT.md:49
 
     def __init__(self, current: str, target: str) -> None:
         super().__init__(f"Cannot transition DR Event from {current} to {target}.")
@@ -132,6 +147,7 @@ async def _mutate_and_finish(
         entity_type="DR_EVENT",
         entity_id=event.id,
         action=action,
+        dr_event_id=event.id,
         before=dict(before),
         after=after,
     )
@@ -189,6 +205,11 @@ class DrEventTransitionService:
         if hard_stop_failures:
             if not override_reason or not override_reason.strip():
                 raise ReadinessHardStopError([r.key for r in hard_stop_failures])
+            # D-224: `dependency_graph_acyclic` is HARD_STOP and not configurable; a cycle is invalid
+            # outright (FROZEN_DECISIONS.md §7.9), so no override_reason gets past it (readiness_service).
+            unoverridable = [r.key for r in hard_stop_failures if r.key in NON_OVERRIDABLE_KEYS]
+            if unoverridable:
+                raise ReadinessHardStopError(unoverridable)
             for result in hard_stop_failures:
                 override = Override(
                     dr_event_id=event.id,
@@ -207,6 +228,7 @@ class DrEventTransitionService:
                     entity_type="DR_EVENT",
                     entity_id=event.id,
                     action="READINESS_OVERRIDE_RECORDED",
+                    dr_event_id=event.id,
                     after={"policy_key": result.key, "reason": override_reason},
                 )
 
@@ -290,6 +312,7 @@ class DrEventTransitionService:
                 entity_type="DR_APPLICATION",
                 entity_id=dr_application.id,
                 action="DR_APPLICATION_RECOVERING",
+                dr_event_id=event.id,
                 before=app_before,
                 after={"status": dr_application.status},
             )
@@ -390,6 +413,7 @@ class DrEventTransitionService:
                 entity_type="DR_APPLICATION",
                 entity_id=dr_application.id,
                 action="DR_APPLICATION_FAILBACK_STARTED",
+                dr_event_id=event.id,
                 before=app_before,
                 after={"status": dr_application.status},
             )
@@ -411,13 +435,14 @@ class DrEventTransitionService:
         actor_id: uuid.UUID,
         event_id: uuid.UUID,
         expected_version: int,
+        closure_exception_reason: str | None = None,
         clock: Clock | None = None,
     ) -> DrEvent:
-        """D-219 child guard is enforced (only needs `parent_dr_event_id`, already in scope).
-        D-227's monitoring-Task guard is deferred (BUILD-04.plan.md Risk #3): work_streams/
-        tasks_dependencies don't exist yet, so there can never be a non-terminal monitoring Task
-        to find -- an honestly-vacuous guard, not a silently-skipped one. CLAUDE.md:43's
-        "FAILED_OVER -> CLOSED only when failback not required" is enforced below."""
+        """Guards in order: D-219 child Events and CLAUDE.md:43's "FAILED_OVER -> CLOSED only when
+        failback not required" are hard stops no exception bypasses; then D-227: unfinished Tasks in
+        a MONITORING Work Stream block with MONITORING_CLOSURE_WARNING unless the caller gives a
+        `closure_exception_reason` and holds CLOSURE_EXCEPTION_OVERRIDE -- one audited override row.
+        An exception given when nothing needs one records nothing."""
         clock = clock or SystemClock()
         # Authorization before existence (invariant #1): EVENT_LIFECYCLE_COMMAND is an unconditional
         # Admin/Coordinator-only capability, not participant-scoped, so checking it first means an
@@ -443,6 +468,35 @@ class DrEventTransitionService:
             )
             if failback_pending.first() is not None:
                 raise FailbackRequiredBeforeCloseError()
+
+        monitoring = await unfinished_monitoring_task_ids(session, event.id)
+        if monitoring:
+            if closure_exception_reason is None:
+                raise MonitoringClosureWarningError(monitoring)
+            reason = closure_exception_reason.strip()
+            if not reason:
+                raise OverrideReasonRequiredError("A closure exception")
+            await AuthorizationService.require(session, actor_id, Capability.CLOSURE_EXCEPTION_OVERRIDE)
+            ids = [str(t) for t in monitoring]
+            await record_override(
+                session,
+                dr_event_id=event.id,
+                target_type="DR_EVENT",
+                target_id=event.id,
+                override_type="CLOSURE_EXCEPTION",
+                reason=reason,
+                performed_by_user_id=actor_id,
+                metadata={"monitoring_task_ids": ids},
+            )
+            await write_audit(
+                session,
+                actor_user_id=actor_id,
+                entity_type="DR_EVENT",
+                entity_id=event.id,
+                action="CLOSURE_EXCEPTION_RECORDED",
+                dr_event_id=event.id,
+                after={"reason": reason, "monitoring_task_ids": ids},
+            )
 
         before = {"status": event.status, "version": event.version}
         event.status = "CLOSED"

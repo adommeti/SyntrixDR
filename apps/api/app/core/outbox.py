@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, text
-from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,31 +12,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.clock import Clock
 from app.core.database import Base
+from app.core.target_types import target_type_enum
 from app.dr_events.models import DrEvent
-
-# Mirrors the `target_type` enum created by 0002_reconciliation; `create_type=False`
-# because the type already exists in the database (migrations rule).
-_TARGET_TYPE = PgEnum(
-    "DR_EVENT",
-    "DR_APPLICATION",
-    "APPLICATION",
-    "WORK_STREAM",
-    "TASK",
-    "TASK_DEPENDENCY",
-    "MILESTONE",
-    "BLOCKER",
-    "ISSUE_FINDING",
-    "VALIDATION",
-    "IMPORT_JOB",
-    "PLAN",
-    "PLAN_VERSION",
-    "REPORT",
-    "DOCUMENT",
-    "ALERT",
-    name="target_type",
-    create_type=False,
-)
-
 
 _ = DrEvent  # registers `dr_events` (real model now) on Base.metadata
 
@@ -57,7 +33,7 @@ class OutboxEvent(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    aggregate_type: Mapped[str] = mapped_column(_TARGET_TYPE, nullable=False)
+    aggregate_type: Mapped[str] = mapped_column(target_type_enum, nullable=False)
     aggregate_id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
     dr_event_id: Mapped[uuid.UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("dr_events.id", ondelete="RESTRICT"), nullable=True

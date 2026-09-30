@@ -31,8 +31,9 @@ from app.tasks_dependencies.commands import (
     TaskContextRequiredError,
     create_draft_dependency,
     create_draft_task,
-    dependency_exists,
+    lock_event_dependency_graph,
 )
+from app.tasks_dependencies.queries import find_cycle_path
 from app.users_teams_org.authorization import AuthorizationService, Capability
 from app.users_teams_org.queries import find_active_user_by_display_name, get_team_by_name
 from app.work_streams.commands import get_or_create_work_stream
@@ -605,7 +606,10 @@ async def process_accepted_import(
             pending_predecessors.append((task.id, row_number, str(predecessor_value)))
 
     summary_created_dependencies = 0
-    created_edges: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    if pending_predecessors:
+        # Same per-Event lock `DependencyService` takes, so a concurrent edit can't close a cycle
+        # between this accept's check and its commit.
+        await lock_event_dependency_graph(session, dr_event_id)
     for successor_id, row_number, raw_predecessor_value in pending_predecessors:
         for predecessor_name in raw_predecessor_value.split(","):
             predecessor_name = predecessor_name.strip()
@@ -621,13 +625,10 @@ async def process_accepted_import(
                     )
                 )
                 continue
-            # Reject a direct 2-node cycle (this row's predecessor is X, and X's own predecessor,
-            # created earlier in this same accept, is this row) instead of silently committing a
-            # directed cycle into the live Task graph (invariant: "no directed cycles").
-            reverse_edge = (successor_id, predecessor_task_id)
-            if reverse_edge in created_edges or await dependency_exists(
-                session, predecessor_task_id=successor_id, successor_task_id=predecessor_task_id
-            ):
+            # The same full cycle check `POST /task-dependencies` runs: it sees every live edge,
+            # including ones this accept flushed a moment ago, so a cycle of any length is flagged for
+            # review rather than committed (invariant #2).
+            if await find_cycle_path(session, dr_event_id, predecessor_task_id, successor_id):
                 summary_needs_review.append(
                     (
                         "TASK",
@@ -645,7 +646,6 @@ async def process_accepted_import(
                 created_by_user_id=actor_id,
             )
             if dependency is not None:
-                created_edges.add((predecessor_task_id, successor_id))
                 summary_created_dependencies += 1
 
     for target_type, target_id, reason in summary_needs_review:

@@ -203,6 +203,64 @@
         "title": "ApplicationResponse",
         "type": "object"
       },
+      "BlockTaskRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "BlockTaskRequest",
+        "type": "object"
+      },
+      "BlockedPathResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "downstream_task_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Downstream Task Ids",
+            "type": "array"
+          },
+          "impacted_dr_application_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Impacted Dr Application Ids",
+            "type": "array"
+          },
+          "root_task_id": {
+            "format": "uuid",
+            "title": "Root Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root_task_id",
+          "downstream_task_ids",
+          "impacted_dr_application_ids"
+        ],
+        "title": "BlockedPathResponse",
+        "type": "object"
+      },
       "CancelEventRequest": {
         "additionalProperties": false,
         "properties": {
@@ -220,6 +278,74 @@
           "reason"
         ],
         "title": "CancelEventRequest",
+        "type": "object"
+      },
+      "CancelTaskRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "CancelTaskRequest",
+        "type": "object"
+      },
+      "CloseEventRequest": {
+        "additionalProperties": false,
+        "description": "`closure_exception` overrides D-227's Monitoring closure warning, with an audited reason.",
+        "properties": {
+          "closure_exception": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClosureExceptionRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "CloseEventRequest",
+        "type": "object"
+      },
+      "ClosureExceptionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "ClosureExceptionRequest",
         "type": "object"
       },
       "ColumnMappingRequest": {
@@ -521,6 +647,242 @@
         "title": "CreatePlanVersionRequest",
         "type": "object"
       },
+      "CreateTaskDependencyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "predecessor_task_id": {
+            "format": "uuid",
+            "title": "Predecessor Task Id",
+            "type": "string"
+          },
+          "strength": {
+            "default": "HARD",
+            "enum": [
+              "HARD",
+              "ADVISORY"
+            ],
+            "title": "Strength",
+            "type": "string"
+          },
+          "successor_task_id": {
+            "format": "uuid",
+            "title": "Successor Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "predecessor_task_id",
+          "successor_task_id"
+        ],
+        "title": "CreateTaskDependencyRequest",
+        "type": "object"
+      },
+      "CreateTaskRequest": {
+        "additionalProperties": false,
+        "description": "API_CONTRACT.md:157 -- the body carries the D-226 evidence fields and D-209's\n`needs_specific_validation`, with their schema defaults.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dr_application_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dr Application Id"
+          },
+          "evidence_min_count": {
+            "default": 1,
+            "maximum": 32767.0,
+            "minimum": 0.0,
+            "title": "Evidence Min Count",
+            "type": "integer"
+          },
+          "evidence_required": {
+            "default": true,
+            "title": "Evidence Required",
+            "type": "boolean"
+          },
+          "expected_duration_minutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Duration Minutes"
+          },
+          "needs_specific_validation": {
+            "default": false,
+            "title": "Needs Specific Validation",
+            "type": "boolean"
+          },
+          "owning_team_id": {
+            "format": "uuid",
+            "title": "Owning Team Id",
+            "type": "string"
+          },
+          "parent_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Task Id"
+          },
+          "phase": {
+            "enum": [
+              "PRE_DR",
+              "FAILOVER",
+              "VALIDATION",
+              "FAILBACK",
+              "POST_DR"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": -2147483648.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "verification_note_required": {
+            "default": true,
+            "title": "Verification Note Required",
+            "type": "boolean"
+          },
+          "work_stream_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Stream Id"
+          }
+        },
+        "required": [
+          "title",
+          "phase",
+          "owning_team_id"
+        ],
+        "title": "CreateTaskRequest",
+        "type": "object"
+      },
+      "CreateWorkStreamRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "lead_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead User Id"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "owning_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owning Team Id"
+          },
+          "sequence_order": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": -2147483648.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Order"
+          },
+          "stream_type": {
+            "default": "CUSTOM",
+            "enum": [
+              "NETWORK",
+              "STORAGE",
+              "DATABASE",
+              "APPLICATIONS",
+              "MONITORING",
+              "VALIDATION",
+              "CUSTOM"
+            ],
+            "title": "Stream Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateWorkStreamRequest",
+        "type": "object"
+      },
       "CsrfTokenResponse": {
         "additionalProperties": false,
         "properties": {
@@ -533,6 +895,354 @@
           "csrf_token"
         ],
         "title": "CsrfTokenResponse",
+        "type": "object"
+      },
+      "DependencyGraphResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked_paths": {
+            "items": {
+              "$ref": "#/components/schemas/BlockedPathResponse"
+            },
+            "title": "Blocked Paths",
+            "type": "array"
+          },
+          "dr_event_id": {
+            "format": "uuid",
+            "title": "Dr Event Id",
+            "type": "string"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdgeResponse"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeResponse"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dr_event_id",
+          "nodes",
+          "edges",
+          "blocked_paths"
+        ],
+        "title": "DependencyGraphResponse",
+        "type": "object"
+      },
+      "DrApplicationResponse": {
+        "additionalProperties": false,
+        "description": "An in-scope Application's Event-specific instance, including D-224's `rpo_not_applicable`.",
+        "properties": {
+          "application_id": {
+            "format": "uuid",
+            "title": "Application Id",
+            "type": "string"
+          },
+          "effective_sla_minutes": {
+            "title": "Effective Sla Minutes",
+            "type": "integer"
+          },
+          "effective_tier_id": {
+            "format": "uuid",
+            "title": "Effective Tier Id",
+            "type": "string"
+          },
+          "failback_required": {
+            "title": "Failback Required",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "rpo_not_applicable": {
+            "title": "Rpo Not Applicable",
+            "type": "boolean"
+          },
+          "rpo_target_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rpo Target Minutes"
+          },
+          "rto_target_minutes": {
+            "title": "Rto Target Minutes",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "application_id",
+          "status",
+          "effective_tier_id",
+          "effective_sla_minutes",
+          "rto_target_minutes",
+          "rpo_target_minutes",
+          "rpo_not_applicable",
+          "failback_required"
+        ],
+        "title": "DrApplicationResponse",
+        "type": "object"
+      },
+      "DrEventDetailResponse": {
+        "additionalProperties": false,
+        "description": "`GET /dr-events/{id}` -- \"Event deep detail\" (API_CONTRACT.md).",
+        "properties": {
+          "ai_control_profile": {
+            "title": "Ai Control Profile",
+            "type": "string"
+          },
+          "baseline_plan_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Plan Version Id"
+          },
+          "cancel_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Reason"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "coordinator_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinator User Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dr_applications": {
+            "items": {
+              "$ref": "#/components/schemas/DrApplicationResponse"
+            },
+            "title": "Dr Applications",
+            "type": "array"
+          },
+          "event_timezone": {
+            "title": "Event Timezone",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "failback_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failback Started At"
+          },
+          "health_score": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Score"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "network_cut_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Cut At"
+          },
+          "parent_dr_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Dr Event Id"
+          },
+          "planned_start_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start At"
+          },
+          "source_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Location"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Location"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "parent_dr_event_id",
+          "name",
+          "event_type",
+          "description",
+          "status",
+          "coordinator_user_id",
+          "source_location",
+          "target_location",
+          "planned_start_at",
+          "event_timezone",
+          "network_cut_at",
+          "failback_started_at",
+          "completed_at",
+          "cancelled_at",
+          "cancel_reason",
+          "ai_control_profile",
+          "baseline_plan_version_id",
+          "health_score",
+          "version",
+          "created_at",
+          "updated_at",
+          "deleted_at",
+          "dr_applications"
+        ],
+        "title": "DrEventDetailResponse",
         "type": "object"
       },
       "DrEventListResponse": {
@@ -799,6 +1509,146 @@
           "expected_version"
         ],
         "title": "ExpectedVersionRequest",
+        "type": "object"
+      },
+      "GraphEdgeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "from_id": {
+            "format": "uuid",
+            "title": "From Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "TASK_DEPENDENCY",
+              "MILESTONE_GATE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "strength": {
+            "enum": [
+              "HARD",
+              "ADVISORY"
+            ],
+            "title": "Strength",
+            "type": "string"
+          },
+          "to_id": {
+            "format": "uuid",
+            "title": "To Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "from_id",
+          "to_id",
+          "strength"
+        ],
+        "title": "GraphEdgeResponse",
+        "type": "object"
+      },
+      "GraphNodeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "active_blocker_count": {
+            "title": "Active Blocker Count",
+            "type": "integer"
+          },
+          "advisory_pending": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Advisory Pending",
+            "type": "array"
+          },
+          "blocked_by": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Blocked By",
+            "type": "array"
+          },
+          "dr_application_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dr Application Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "TASK",
+              "MILESTONE"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "ready": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "work_stream_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Stream Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "status",
+          "dr_application_id",
+          "work_stream_id",
+          "ready",
+          "blocked_by",
+          "advisory_pending",
+          "active_blocker_count"
+        ],
+        "title": "GraphNodeResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1501,6 +2351,31 @@
         "title": "ReauthResponse",
         "type": "object"
       },
+      "ResumeTaskRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ResumeTaskRequest",
+        "type": "object"
+      },
       "SetApplicationOwnerItem": {
         "additionalProperties": false,
         "properties": {
@@ -1631,6 +2506,362 @@
           "expected_version"
         ],
         "title": "StartFailoverRequest",
+        "type": "object"
+      },
+      "StartTaskRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "StartTaskRequest",
+        "type": "object"
+      },
+      "SubmitValidationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "verification_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Note"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "SubmitValidationRequest",
+        "type": "object"
+      },
+      "TaskDependencyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "format": "uuid",
+            "title": "Created By User Id",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "dependency_type": {
+            "title": "Dependency Type",
+            "type": "string"
+          },
+          "dr_event_id": {
+            "format": "uuid",
+            "title": "Dr Event Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "predecessor_task_id": {
+            "format": "uuid",
+            "title": "Predecessor Task Id",
+            "type": "string"
+          },
+          "strength": {
+            "title": "Strength",
+            "type": "string"
+          },
+          "successor_task_id": {
+            "format": "uuid",
+            "title": "Successor Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "dr_event_id",
+          "predecessor_task_id",
+          "successor_task_id",
+          "dependency_type",
+          "strength",
+          "created_by_user_id",
+          "created_at",
+          "deleted_at"
+        ],
+        "title": "TaskDependencyResponse",
+        "type": "object"
+      },
+      "TaskListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskResponse"
+            },
+            "title": "Tasks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tasks"
+        ],
+        "title": "TaskListResponse",
+        "type": "object"
+      },
+      "TaskResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_assignee_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Assignee User Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dr_application_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dr Application Id"
+          },
+          "dr_event_id": {
+            "format": "uuid",
+            "title": "Dr Event Id",
+            "type": "string"
+          },
+          "evidence_min_count": {
+            "title": "Evidence Min Count",
+            "type": "integer"
+          },
+          "evidence_required": {
+            "title": "Evidence Required",
+            "type": "boolean"
+          },
+          "expected_duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Duration Minutes"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "needs_specific_validation": {
+            "title": "Needs Specific Validation",
+            "type": "boolean"
+          },
+          "owning_team_id": {
+            "format": "uuid",
+            "title": "Owning Team Id",
+            "type": "string"
+          },
+          "parent_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Task Id"
+          },
+          "phase": {
+            "enum": [
+              "PRE_DR",
+              "FAILOVER",
+              "VALIDATION",
+              "FAILBACK",
+              "POST_DR"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "source_import_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Import Id"
+          },
+          "source_import_row": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Import Row"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "BLOCKED",
+              "READY_FOR_VALIDATION",
+              "COMPLETED",
+              "CANCELLED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "verification_note_required": {
+            "title": "Verification Note Required",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "work_stream_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Stream Id"
+          }
+        },
+        "required": [
+          "id",
+          "dr_event_id",
+          "dr_application_id",
+          "work_stream_id",
+          "parent_task_id",
+          "title",
+          "description",
+          "phase",
+          "status",
+          "owning_team_id",
+          "current_assignee_user_id",
+          "expected_duration_minutes",
+          "started_at",
+          "completed_at",
+          "needs_specific_validation",
+          "evidence_required",
+          "evidence_min_count",
+          "verification_note_required",
+          "source_import_id",
+          "source_import_row",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TaskResponse",
         "type": "object"
       },
       "TeamListResponse": {
@@ -1954,6 +3185,87 @@
         "title": "UpdateApplicationRequest",
         "type": "object"
       },
+      "UpdateTaskRequest": {
+        "additionalProperties": false,
+        "description": "`PATCH /tasks/{id}` (API_CONTRACT.md:158). Only fields present in the body change\n(`model_fields_set`); the defaults below are never applied. `extra=\"forbid\"` is what keeps status,\nOwning Team, assignee, context, phase and parent out (422).",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "evidence_min_count": {
+            "default": 1,
+            "maximum": 32767.0,
+            "minimum": 0.0,
+            "title": "Evidence Min Count",
+            "type": "integer"
+          },
+          "evidence_required": {
+            "default": true,
+            "title": "Evidence Required",
+            "type": "boolean"
+          },
+          "expected_duration_minutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Duration Minutes"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "needs_specific_validation": {
+            "default": false,
+            "title": "Needs Specific Validation",
+            "type": "boolean"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": -2147483648.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "title": {
+            "default": "",
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Title",
+            "type": "string"
+          },
+          "verification_note_required": {
+            "default": true,
+            "title": "Verification Note Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "UpdateTaskRequest",
+        "type": "object"
+      },
       "UpdateTiersRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2030,6 +3342,36 @@
         "title": "UserResponse",
         "type": "object"
       },
+      "ValidateTaskRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "expected_version",
+          "approve"
+        ],
+        "title": "ValidateTaskRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -2061,6 +3403,130 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WorkStreamListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "work_streams": {
+            "items": {
+              "$ref": "#/components/schemas/WorkStreamResponse"
+            },
+            "title": "Work Streams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "work_streams"
+        ],
+        "title": "WorkStreamListResponse",
+        "type": "object"
+      },
+      "WorkStreamResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dr_event_id": {
+            "format": "uuid",
+            "title": "Dr Event Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lead_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead User Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owning_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owning Team Id"
+          },
+          "sequence_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Order"
+          },
+          "stream_type": {
+            "enum": [
+              "NETWORK",
+              "STORAGE",
+              "DATABASE",
+              "APPLICATIONS",
+              "MONITORING",
+              "VALIDATION",
+              "CUSTOM"
+            ],
+            "title": "Stream Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "dr_event_id",
+          "name",
+          "description",
+          "stream_type",
+          "lead_user_id",
+          "owning_team_id",
+          "sequence_order",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WorkStreamResponse",
         "type": "object"
       }
     }
@@ -2930,7 +4396,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DrEventResponse"
+                  "$ref": "#/components/schemas/DrEventDetailResponse"
                 }
               }
             },
@@ -3074,7 +4540,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ExpectedVersionRequest"
+                "$ref": "#/components/schemas/CloseEventRequest"
               }
             }
           },
@@ -3103,6 +4569,49 @@
         "summary": "Post Close Event",
         "tags": [
           "dr_events"
+        ]
+      }
+    },
+    "/api/v1/dr-events/{event_id}/dependency-graph": {
+      "get": {
+        "operationId": "get_dependency_graph_route_api_v1_dr_events__event_id__dependency_graph_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyGraphResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Dependency Graph Route",
+        "tags": [
+          "tasks_dependencies"
         ]
       }
     },
@@ -3297,6 +4806,194 @@
         "summary": "Post Start Failover",
         "tags": [
           "dr_events"
+        ]
+      }
+    },
+    "/api/v1/dr-events/{event_id}/tasks": {
+      "get": {
+        "operationId": "list_tasks_route_api_v1_dr_events__event_id__tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tasks Route",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      },
+      "post": {
+        "operationId": "post_create_task_api_v1_dr_events__event_id__tasks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create Task",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
+    "/api/v1/dr-events/{event_id}/work-streams": {
+      "get": {
+        "operationId": "list_work_streams_route_api_v1_dr_events__event_id__work_streams_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkStreamListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Work Streams Route",
+        "tags": [
+          "work_streams"
+        ]
+      },
+      "post": {
+        "operationId": "post_create_work_stream_api_v1_dr_events__event_id__work_streams_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkStreamRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkStreamResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create Work Stream",
+        "tags": [
+          "work_streams"
         ]
       }
     },
@@ -3586,6 +5283,490 @@
         "summary": "Post Create Plan Version",
         "tags": [
           "plans_import"
+        ]
+      }
+    },
+    "/api/v1/task-dependencies": {
+      "post": {
+        "operationId": "post_create_task_dependency_api_v1_task_dependencies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskDependencyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDependencyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create Task Dependency",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
+    "/api/v1/task-dependencies/{dependency_id}": {
+      "delete": {
+        "description": "200 with the removed edge, not 204: the idempotent replay (D-215, required here as the stricter\nreading of \"command POST\") has to return a stored body (BUILD-06.plan.md Risk #15).",
+        "operationId": "delete_task_dependency_api_v1_task_dependencies__dependency_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dependency_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dependency Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDependencyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Task Dependency",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "get": {
+        "operationId": "get_task_route_api_v1_tasks__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Task Route",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      },
+      "patch": {
+        "description": "API_CONTRACT.md:158 -- non-state Task metadata; only the fields present in the body change.",
+        "operationId": "patch_task_api_v1_tasks__task_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Task",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/block": {
+      "post": {
+        "operationId": "post_block_task_api_v1_tasks__task_id__block_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Block Task",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/cancel": {
+      "post": {
+        "operationId": "post_cancel_task_api_v1_tasks__task_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Cancel Task",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/resume": {
+      "post": {
+        "operationId": "post_resume_task_api_v1_tasks__task_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Resume Task",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/start": {
+      "post": {
+        "operationId": "post_start_task_api_v1_tasks__task_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Start Task",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/submit-validation": {
+      "post": {
+        "operationId": "post_submit_task_validation_api_v1_tasks__task_id__submit_validation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitValidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Submit Task Validation",
+        "tags": [
+          "tasks_dependencies"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/validate": {
+      "post": {
+        "operationId": "post_validate_task_api_v1_tasks__task_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Validate Task",
+        "tags": [
+          "tasks_dependencies"
         ]
       }
     },

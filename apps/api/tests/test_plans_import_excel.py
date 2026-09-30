@@ -15,8 +15,8 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from redis.asyncio import Redis
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.ai_orchestration.provider import AIProvider
 from app.core.clock import Clock, FakeClock
@@ -29,12 +29,14 @@ from app.identity_auth.session_store import RedisSessionStore
 from app.plans_import.commands import create_import_job
 from app.plans_import.jobs import parse_import_job
 from app.plans_import.routes import router as plans_import_router
+from app.tasks_dependencies.queries import event_graph_has_cycle
 from app.users_teams_org.models import RoleAssignment
 from tests.fixtures.imports.workbooks import (
     canonical_workbook,
     cyclical_workbook,
     messy_workbook,
     reordered_renamed_workbook,
+    three_node_cycle_workbook,
 )
 
 pytestmark = [pytest.mark.api, pytest.mark.integration]
@@ -703,6 +705,59 @@ async def test_cyclical_workbook_rejects_the_would_be_cycle_edge(
         text("SELECT reason FROM needs_review_items WHERE dr_event_id = :eid"), {"eid": event_id}
     )
     assert "dependency cycle" in reason.scalar_one()
+    await redis_client.delete(f"drcc:session:{session_id}")
+
+
+@pytest.mark.asyncio
+async def test_a_three_node_cycle_is_flagged_not_committed(
+    session: AsyncSession, engine: AsyncEngine, redis_client: Redis, clock: FakeClock
+) -> None:
+    """BUILD-06 routes import accept through the same cycle check as `POST /task-dependencies`: the
+    edge that would close C->A->B->C is flagged for review; the graph stays acyclic."""
+    admin_id = await _create_entra_admin(session)
+    event_id = await _create_event_row(session, actor_id=admin_id, name="Three Node Cycle Event")
+    await _create_team(session, name="Network Team")
+    import_job_id = await _upload_and_parse(
+        session,
+        actor_id=admin_id,
+        dr_event_id=event_id,
+        filename="plan.xlsx",
+        content=three_node_cycle_workbook(),
+    )
+    app = _build_app(session, redis_client, clock)
+    session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
+
+    async with await _client(app) as client:
+        detail = await client.get(f"/api/v1/imports/{import_job_id}", cookies={"drcc_session": session_id})
+        mapping = [
+            {"source_header": m["source_header"], "target_field": m["target_field"]}
+            for m in detail.json()["proposed_mapping"]
+        ]
+        response = await client.post(
+            f"/api/v1/imports/{import_job_id}/accept",
+            cookies={"drcc_session": session_id},
+            headers=_idem_headers(csrf_token),
+            json={"mapping": mapping},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["created_task_count"], body["created_dependency_count"], body["needs_review_count"]) == (
+        3,
+        2,
+        1,
+    )
+    assert await event_graph_has_cycle(session, event_id) is False
+    reason = await session.scalar(
+        text("SELECT reason FROM needs_review_items WHERE dr_event_id = :eid"), {"eid": event_id}
+    )
+    assert "dependency cycle" in reason
+    # ...and accept held the same per-Event lock the API's dependency writes take.
+    async with engine.connect() as other:
+        lock_free = await other.scalar(
+            select(func.pg_try_advisory_xact_lock(func.hashtextextended(f"dependency_graph:{event_id}", 0)))
+        )
+    assert lock_free is False
     await redis_client.delete(f"drcc:session:{session_id}")
 
 

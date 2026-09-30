@@ -18,6 +18,14 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.core.external_refs import milestones_table
+from app.dr_events.models import DrApplication, DrEvent
+from app.users_teams_org.models import Team, User
+from app.work_streams.models import WorkStream
+
+# Registers every cross-module FK target on Base.metadata (ADR-038), so these models work in a
+# process that imports nothing else first. `milestones` is a stub until BUILD-07's real model.
+_ = (milestones_table, DrApplication, DrEvent, Team, User, WorkStream)
 
 
 def _now_utc() -> datetime:
@@ -138,9 +146,9 @@ class Task(Base):
 
 
 class TaskDependency(Base):
-    """Finish-to-start dependency edge (schema_v1.sql:332-345). BUILD-05 only creates rows
-    (`commands.py::create_draft_dependency`) with a minimal no-self-edge/no-exact-duplicate guard
-    -- full cycle detection across the whole graph is BUILD-06's scope (plan Risk #2)."""
+    """Finish-to-start Task->Task edge (schema_v1.sql:332-345). Created and removed only through
+    `dependency_service.py::DependencyService` (self-edge, duplicate and directed-cycle checks under a
+    per-Event lock) -- including BUILD-05's Excel import, which routes through the same cycle check."""
 
     __tablename__ = "task_dependencies"
     __table_args__ = (
@@ -169,6 +177,40 @@ class TaskDependency(Base):
         Enum("FINISH_TO_START", name="dependency_type", native_enum=True, create_type=False),
         nullable=False,
         default="FINISH_TO_START",
+    )
+    strength: Mapped[str] = mapped_column(
+        Enum("HARD", "ADVISORY", name="dependency_strength", native_enum=True, create_type=False),
+        nullable=False,
+        default="HARD",
+    )
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now_utc)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MilestoneDependency(Base):
+    """A Milestone gating a Task (schema_v1.sql:376-385): with strength HARD the Task isn't Ready
+    until the Milestone is ACHIEVED. No `dr_event_id` column -- the Event is the successor Task's."""
+
+    __tablename__ = "milestone_dependencies"
+    __table_args__ = (
+        Index(
+            "ux_milestone_dependency",
+            "milestone_id",
+            "successor_task_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    milestone_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("milestones.id", ondelete="RESTRICT"), nullable=False
+    )
+    successor_task_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("tasks.id", ondelete="RESTRICT"), nullable=False
     )
     strength: Mapped[str] = mapped_column(
         Enum("HARD", "ADVISORY", name="dependency_strength", native_enum=True, create_type=False),

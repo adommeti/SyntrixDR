@@ -96,3 +96,7 @@ async def list_descendant_dr_applications(session: AsyncSession, event_id: uuid.
         )
     )
     return list(result.scalars().all())
+
+
+async def get_dr_application(session: AsyncSession, dr_application_id: uuid.UUID) -> DrApplication | None:
+    return await session.get(DrApplication, dr_application_id)

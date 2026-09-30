@@ -8,13 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.applications_catalog.queries import list_application_ids_with_primary_owner
 from app.dr_events.models import DrApplication, DrEvent
 from app.policies_admin.queries import PolicyService
+from app.tasks_dependencies.queries import event_graph_has_cycle, live_monitoring_task_exists, owning_team_ids
+from app.users_teams_org.queries import live_team_ids
+from app.work_streams.queries import every_stream_has_a_lead
 
-#: D-224 readiness catalog has 13 keys (FREEZE_ADDENDUM.md:60); only these 6 are computable with
-#: entities that exist today. The other 7 (`readiness.failback_plan_exists`,
-#: `.critical_milestone_owner`, `.work_stream_lead`, `.task_owning_team`,
-#: `.dependency_graph_acyclic`, `.monitoring_task_present`, `.needs_review_resolved`) reference
-#: Work Streams/Tasks/Milestones/imports — modules that don't exist yet — and are deliberately
-#: never evaluated here, not faked as passing (BUILD-04.plan.md session-b scope).
+#: D-224 readiness catalog has 13 keys (FREEZE_ADDENDUM.md:60); these 10 are computable today. BUILD-06
+#: added `.dependency_graph_acyclic`, `.task_owning_team`, `.work_stream_lead` and
+#: `.monitoring_task_present`. The other 3 (`readiness.failback_plan_exists`,
+#: `.critical_milestone_owner`, `.needs_review_resolved`) still reference entities or commands that
+#: don't exist yet, and are deliberately never evaluated here, not faked as passing.
 EVALUATED_KEYS = (
     "readiness.event_timezone_set",
     "readiness.coordinator_assigned",
@@ -22,7 +24,16 @@ EVALUATED_KEYS = (
     "readiness.primary_system_owner",
     "readiness.rpo_target_or_na",
     "readiness.primary_business_owner",
+    "readiness.dependency_graph_acyclic",
+    "readiness.task_owning_team",
+    "readiness.work_stream_lead",
+    "readiness.monitoring_task_present",
 )
+
+#: D-224: "dependency graph acyclic — HARD_STOP and not configurable". A cycle is invalid outright
+#: (FROZEN_DECISIONS.md §7.9), so this key's severity is fixed here whatever `policy_values` says and
+#: no `override_reason` gets past it (BUILD-06.plan.md Risk #14).
+NON_OVERRIDABLE_KEYS = frozenset({"readiness.dependency_graph_acyclic"})
 
 
 @dataclass(frozen=True)
@@ -53,6 +64,7 @@ async def evaluate_readiness(session: AsyncSession, event: DrEvent) -> list[Read
         select(DrApplication).where(DrApplication.dr_event_id == event.id, DrApplication.deleted_at.is_(None))
     )
     dr_apps = list(dr_apps_result.scalars().all())
+    team_ids = await owning_team_ids(session, event.id)
 
     satisfied_by_key = {
         "readiness.event_timezone_set": bool(event.event_timezone),
@@ -66,10 +78,19 @@ async def evaluate_readiness(session: AsyncSession, event: DrEvent) -> list[Read
         ),
         "readiness.rpo_target_or_na": bool(dr_apps)
         and all(a.rpo_target_minutes is not None or a.rpo_not_applicable for a in dr_apps),
+        "readiness.dependency_graph_acyclic": not await event_graph_has_cycle(session, event.id),
+        # tasks.owning_team_id is NOT NULL, so the only way this fails is the Team being soft-deleted.
+        "readiness.task_owning_team": set(team_ids) <= await live_team_ids(session, team_ids),
+        "readiness.work_stream_lead": await every_stream_has_a_lead(session, event.id),
+        "readiness.monitoring_task_present": await live_monitoring_task_exists(session, event.id),
     }
 
     results: list[ReadinessResult] = []
     for key in EVALUATED_KEYS:
-        severity = await PolicyService.resolve(session, key, event_id=event.id)
+        severity = (
+            "HARD_STOP"
+            if key in NON_OVERRIDABLE_KEYS
+            else await PolicyService.resolve(session, key, event_id=event.id)
+        )
         results.append(ReadinessResult(key=key, severity=severity, satisfied=satisfied_by_key[key]))
     return results

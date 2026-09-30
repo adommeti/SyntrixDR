@@ -32,6 +32,7 @@ dependencies = [
 [dependency-groups]
 dev = [
   "pytest>=8.3,<9",
+  "hypothesis>=6.112,<7",
   "pytest-asyncio>=0.24,<0.25",
   "testcontainers[postgres]>=4.8,<5",
   "ruff>=0.7,<0.8",
@@ -93,6 +94,9 @@ root = "."
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# `load` is timing-bound; slower CI runners would flake it. `make test-load` and the local verify.sh
+# gate run it; an explicit -m on the command line overrides this default.
+addopts = '-m "not load"'
 testpaths = ["tests"]
 markers = [
   "domain: domain rule tests",

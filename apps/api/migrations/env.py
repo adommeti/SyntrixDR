@@ -8,12 +8,14 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from app.blockers.models import Blocker
 from app.core.config import get_settings
 from app.core.database import Base
 from app.core.file_policy import FilePolicy
 from app.core.idempotency import IdempotencyKey
 from app.core.outbox import OutboxEvent
 from app.plans_import.models import PlanVersion
+from app.validation_evidence.models import Validation
 from app.work_streams.models import WorkStream
 
 config = context.config
@@ -30,8 +32,9 @@ target_metadata = Base.metadata
 # `alembic check` without this explicit import fails to resolve that FK's target table.
 # `WorkStream`/`FilePolicy` (BUILD-05): nothing yet imports `work_streams.models`/
 # `core.file_policy` either, so their tables would be invisible to `alembic check` without this
-# explicit registration.
-_MODELED_TABLES = (IdempotencyKey, OutboxEvent, PlanVersion, WorkStream, FilePolicy)
+# explicit registration. `Blocker`/`Validation` (BUILD-06): same reason, until their own
+# modules' routes land (BUILD-08/09) and something on the app import path pulls them in.
+_MODELED_TABLES = (IdempotencyKey, OutboxEvent, PlanVersion, WorkStream, FilePolicy, Blocker, Validation)
 
 
 def get_url() -> str:

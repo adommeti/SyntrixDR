@@ -21,7 +21,9 @@ from app.identity_auth.routes import router as identity_auth_router
 from app.identity_auth.session_store import RedisSessionStore
 from app.plans_import.routes import router as plans_import_router
 from app.policies_admin.routes import router as policies_admin_router
+from app.tasks_dependencies.routes import router as tasks_dependencies_router
 from app.users_teams_org.routes import router as users_teams_org_router
+from app.work_streams.routes import router as work_streams_router
 
 CORRELATION_ID_HEADER = "X-Correlation-Id"
 
@@ -75,6 +77,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(policies_admin_router)
     app.include_router(plans_import_router)
     app.include_router(dr_events_router)
+    app.include_router(tasks_dependencies_router)
+    app.include_router(work_streams_router)
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:

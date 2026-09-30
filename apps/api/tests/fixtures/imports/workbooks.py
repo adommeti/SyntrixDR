@@ -122,3 +122,17 @@ def cyclical_workbook() -> bytes:
             ["Task B", "Network Team", "Network", "Task A", "Predecessor is Task A"],
         ]
     )
+
+
+def three_node_cycle_workbook() -> bytes:
+    """A's predecessor is C, B's is A, C's is B: C->A, A->B, B->C. Accepting the rows in order commits
+    the first two edges; the third closes A->B->C->A and must be flagged, not committed. BUILD-05's
+    reverse-edge check only ever caught the 2-node version of this."""
+    return _to_bytes(
+        [
+            ["Task", "Owning Team", "Work Stream", "Predecessor / Dependency", "Notes"],
+            ["Task A", "Network Team", "Network", "Task C", "Predecessor is Task C"],
+            ["Task B", "Network Team", "Network", "Task A", "Predecessor is Task A"],
+            ["Task C", "Network Team", "Network", "Task B", "Predecessor is Task B"],
+        ]
+    )

@@ -10,7 +10,8 @@ from app.core.audit import write_audit
 from app.core.clock import Clock, SystemClock
 from app.core.errors import AppError
 from app.core.outbox import write_outbox
-from app.dr_events.models import DrApplication, DrEvent
+from app.dr_events.errors import DrEventNotFoundError
+from app.dr_events.models import DrApplication, DrEvent, Override
 from app.dr_events.participants import enrol_participant, user_can_see_event
 from app.plans_import.commands import instantiate_plan_into_event
 from app.users_teams_org.authorization import AuthorizationService, Capability, Scope
@@ -19,14 +20,6 @@ _OWNER_TYPE_TO_PARTICIPANT_SOURCE = {
     "SYSTEM_APPLICATION": "APP_OWNER",
     "BUSINESS": "BUSINESS_OWNER",
 }
-
-
-class DrEventNotFoundError(AppError):
-    code = "DR_EVENT_NOT_FOUND"
-    status_code = 404
-
-    def __init__(self) -> None:
-        super().__init__("DR Event not found.")
 
 
 class PlanVersionRequiredError(AppError):
@@ -132,6 +125,7 @@ async def create_event(
             entity_type="DR_APPLICATION",
             entity_id=dr_application.id,
             action="DR_APPLICATION_CREATED",
+            dr_event_id=event.id,
             after={"application_id": str(app_id), "dr_event_id": str(event.id)},
         )
 
@@ -157,6 +151,7 @@ async def create_event(
         entity_type="DR_EVENT",
         entity_id=event.id,
         action="DR_EVENT_CREATED",
+        dr_event_id=event.id,
         after={"name": name, "event_type": event_type, "status": event.status},
     )
     await write_outbox(
@@ -169,3 +164,31 @@ async def create_event(
         dr_event_id=event.id,
     )
     return event
+
+
+async def record_override(
+    session: AsyncSession,
+    *,
+    dr_event_id: uuid.UUID,
+    target_type: str,
+    target_id: uuid.UUID,
+    override_type: str,
+    reason: str,
+    performed_by_user_id: uuid.UUID,
+    metadata: dict[str, object] | None = None,
+) -> Override:
+    """Writes one `overrides` row (schema_v1.sql:603-614). The caller has already authorized the
+    override and checked the reason is non-blank, and writes the audit row against its own entity
+    (same shape as `DrEventTransitionService.activate`'s readiness overrides)."""
+    override = Override(
+        dr_event_id=dr_event_id,
+        target_type=target_type,
+        target_id=target_id,
+        override_type=override_type,
+        reason=reason,
+        performed_by_user_id=performed_by_user_id,
+        metadata_=metadata or {},
+    )
+    session.add(override)
+    await session.flush()
+    return override

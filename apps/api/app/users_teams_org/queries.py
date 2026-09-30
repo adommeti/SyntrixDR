@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.users_teams_org.models import RoleAssignment, Team, TeamMembership, User
@@ -142,3 +143,46 @@ async def list_active_roles(session: AsyncSession, user_id: uuid.UUID) -> list[R
         select(RoleAssignment).where(RoleAssignment.user_id == user_id, RoleAssignment.revoked_at.is_(None))
     )
     return list(result.scalars().all())
+
+
+async def is_active_team_member(
+    session: AsyncSession, team_id: uuid.UUID, user_id: uuid.UUID, *, at: datetime
+) -> bool:
+    """Not soft-deleted, and `at` falls inside the membership's optional effective window."""
+    result = await session.execute(
+        select(TeamMembership.id).where(
+            TeamMembership.team_id == team_id,
+            TeamMembership.user_id == user_id,
+            TeamMembership.deleted_at.is_(None),
+            or_(TeamMembership.effective_from.is_(None), TeamMembership.effective_from <= at),
+            or_(TeamMembership.effective_to.is_(None), TeamMembership.effective_to >= at),
+        )
+    )
+    return result.first() is not None
+
+
+async def get_team(session: AsyncSession, team_id: uuid.UUID) -> Team | None:
+    team = await session.get(Team, team_id)
+    return team if team is not None and team.deleted_at is None else None
+
+
+async def list_active_team_member_ids(
+    session: AsyncSession, team_id: uuid.UUID, *, at: datetime
+) -> list[uuid.UUID]:
+    """Same "active" rule as `is_active_team_member`: live row, `at` inside the effective window."""
+    result = await session.execute(
+        select(TeamMembership.user_id).where(
+            TeamMembership.team_id == team_id,
+            TeamMembership.deleted_at.is_(None),
+            or_(TeamMembership.effective_from.is_(None), TeamMembership.effective_from <= at),
+            or_(TeamMembership.effective_to.is_(None), TeamMembership.effective_to >= at),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def live_team_ids(session: AsyncSession, team_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    if not team_ids:
+        return set()
+    result = await session.execute(select(Team.id).where(Team.id.in_(team_ids), Team.deleted_at.is_(None)))
+    return set(result.scalars().all())

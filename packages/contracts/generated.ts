@@ -422,6 +422,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dr-events/{event_id}/dependency-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dependency Graph Route */
+        get: operations["get_dependency_graph_route_api_v1_dr_events__event_id__dependency_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dr-events/{event_id}/imports/excel": {
         parameters: {
             query?: never;
@@ -484,6 +501,42 @@ export interface paths {
         put?: never;
         /** Post Start Failover */
         post: operations["post_start_failover_api_v1_dr_events__event_id__start_failover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-events/{event_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tasks Route */
+        get: operations["list_tasks_route_api_v1_dr_events__event_id__tasks_get"];
+        put?: never;
+        /** Post Create Task */
+        post: operations["post_create_task_api_v1_dr_events__event_id__tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-events/{event_id}/work-streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Work Streams Route */
+        get: operations["list_work_streams_route_api_v1_dr_events__event_id__work_streams_get"];
+        put?: never;
+        /** Post Create Work Stream */
+        post: operations["post_create_work_stream_api_v1_dr_events__event_id__work_streams_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -604,6 +657,167 @@ export interface paths {
         put?: never;
         /** Post Create Plan Version */
         post: operations["post_create_plan_version_api_v1_plans__plan_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/task-dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Create Task Dependency */
+        post: operations["post_create_task_dependency_api_v1_task_dependencies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/task-dependencies/{dependency_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Task Dependency
+         * @description 200 with the removed edge, not 204: the idempotent replay (D-215, required here as the stricter
+         *     reading of "command POST") has to return a stored body (BUILD-06.plan.md Risk #15).
+         */
+        delete: operations["delete_task_dependency_api_v1_task_dependencies__dependency_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Task Route */
+        get: operations["get_task_route_api_v1_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Task
+         * @description API_CONTRACT.md:158 -- non-state Task metadata; only the fields present in the body change.
+         */
+        patch: operations["patch_task_api_v1_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Block Task */
+        post: operations["post_block_task_api_v1_tasks__task_id__block_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Cancel Task */
+        post: operations["post_cancel_task_api_v1_tasks__task_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Resume Task */
+        post: operations["post_resume_task_api_v1_tasks__task_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Start Task */
+        post: operations["post_start_task_api_v1_tasks__task_id__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/submit-validation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Submit Task Validation */
+        post: operations["post_submit_task_validation_api_v1_tasks__task_id__submit_validation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Validate Task */
+        post: operations["post_validate_task_api_v1_tasks__task_id__validate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -744,12 +958,52 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** BlockTaskRequest */
+        BlockTaskRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** BlockedPathResponse */
+        BlockedPathResponse: {
+            /** Downstream Task Ids */
+            downstream_task_ids: string[];
+            /** Impacted Dr Application Ids */
+            impacted_dr_application_ids: string[];
+            /**
+             * Root Task Id
+             * Format: uuid
+             */
+            root_task_id: string;
+        };
         /** CancelEventRequest */
         CancelEventRequest: {
             /** Expected Version */
             expected_version: number;
             /** Reason */
             reason: string;
+        };
+        /** CancelTaskRequest */
+        CancelTaskRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * CloseEventRequest
+         * @description `closure_exception` overrides D-227's Monitoring closure warning, with an audited reason.
+         */
+        CloseEventRequest: {
+            closure_exception?: components["schemas"]["ClosureExceptionRequest"] | null;
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** ClosureExceptionRequest */
+        ClosureExceptionRequest: {
+            /** Reason */
+            reason?: string | null;
         };
         /** ColumnMappingRequest */
         ColumnMappingRequest: {
@@ -845,10 +1099,209 @@ export interface components {
             /** Version Type */
             version_type: string;
         };
+        /** CreateTaskDependencyRequest */
+        CreateTaskDependencyRequest: {
+            /**
+             * Predecessor Task Id
+             * Format: uuid
+             */
+            predecessor_task_id: string;
+            /**
+             * Strength
+             * @default HARD
+             * @enum {string}
+             */
+            strength: "HARD" | "ADVISORY";
+            /**
+             * Successor Task Id
+             * Format: uuid
+             */
+            successor_task_id: string;
+        };
+        /**
+         * CreateTaskRequest
+         * @description API_CONTRACT.md:157 -- the body carries the D-226 evidence fields and D-209's
+         *     `needs_specific_validation`, with their schema defaults.
+         */
+        CreateTaskRequest: {
+            /** Description */
+            description?: string | null;
+            /** Dr Application Id */
+            dr_application_id?: string | null;
+            /**
+             * Evidence Min Count
+             * @default 1
+             */
+            evidence_min_count: number;
+            /**
+             * Evidence Required
+             * @default true
+             */
+            evidence_required: boolean;
+            /** Expected Duration Minutes */
+            expected_duration_minutes?: number | null;
+            /**
+             * Needs Specific Validation
+             * @default false
+             */
+            needs_specific_validation: boolean;
+            /**
+             * Owning Team Id
+             * Format: uuid
+             */
+            owning_team_id: string;
+            /** Parent Task Id */
+            parent_task_id?: string | null;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "PRE_DR" | "FAILOVER" | "VALIDATION" | "FAILBACK" | "POST_DR";
+            /** Sort Order */
+            sort_order?: number | null;
+            /** Title */
+            title: string;
+            /**
+             * Verification Note Required
+             * @default true
+             */
+            verification_note_required: boolean;
+            /** Work Stream Id */
+            work_stream_id?: string | null;
+        };
+        /** CreateWorkStreamRequest */
+        CreateWorkStreamRequest: {
+            /** Description */
+            description?: string | null;
+            /** Lead User Id */
+            lead_user_id?: string | null;
+            /** Name */
+            name: string;
+            /** Owning Team Id */
+            owning_team_id?: string | null;
+            /** Sequence Order */
+            sequence_order?: number | null;
+            /**
+             * Stream Type
+             * @default CUSTOM
+             * @enum {string}
+             */
+            stream_type: "NETWORK" | "STORAGE" | "DATABASE" | "APPLICATIONS" | "MONITORING" | "VALIDATION" | "CUSTOM";
+        };
         /** CsrfTokenResponse */
         CsrfTokenResponse: {
             /** Csrf Token */
             csrf_token: string;
+        };
+        /** DependencyGraphResponse */
+        DependencyGraphResponse: {
+            /** Blocked Paths */
+            blocked_paths: components["schemas"]["BlockedPathResponse"][];
+            /**
+             * Dr Event Id
+             * Format: uuid
+             */
+            dr_event_id: string;
+            /** Edges */
+            edges: components["schemas"]["GraphEdgeResponse"][];
+            /** Nodes */
+            nodes: components["schemas"]["GraphNodeResponse"][];
+        };
+        /**
+         * DrApplicationResponse
+         * @description An in-scope Application's Event-specific instance, including D-224's `rpo_not_applicable`.
+         */
+        DrApplicationResponse: {
+            /**
+             * Application Id
+             * Format: uuid
+             */
+            application_id: string;
+            /** Effective Sla Minutes */
+            effective_sla_minutes: number;
+            /**
+             * Effective Tier Id
+             * Format: uuid
+             */
+            effective_tier_id: string;
+            /** Failback Required */
+            failback_required: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Rpo Not Applicable */
+            rpo_not_applicable: boolean;
+            /** Rpo Target Minutes */
+            rpo_target_minutes: number | null;
+            /** Rto Target Minutes */
+            rto_target_minutes: number;
+            /** Status */
+            status: string;
+        };
+        /**
+         * DrEventDetailResponse
+         * @description `GET /dr-events/{id}` -- "Event deep detail" (API_CONTRACT.md).
+         */
+        DrEventDetailResponse: {
+            /** Ai Control Profile */
+            ai_control_profile: string;
+            /** Baseline Plan Version Id */
+            baseline_plan_version_id: string | null;
+            /** Cancel Reason */
+            cancel_reason: string | null;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Coordinator User Id */
+            coordinator_user_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Description */
+            description: string | null;
+            /** Dr Applications */
+            dr_applications: components["schemas"]["DrApplicationResponse"][];
+            /** Event Timezone */
+            event_timezone: string;
+            /** Event Type */
+            event_type: string;
+            /** Failback Started At */
+            failback_started_at: string | null;
+            /** Health Score */
+            health_score: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Network Cut At */
+            network_cut_at: string | null;
+            /** Parent Dr Event Id */
+            parent_dr_event_id: string | null;
+            /** Planned Start At */
+            planned_start_at: string | null;
+            /** Source Location */
+            source_location: string | null;
+            /** Status */
+            status: string;
+            /** Target Location */
+            target_location: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
         };
         /** DrEventListResponse */
         DrEventListResponse: {
@@ -917,6 +1370,63 @@ export interface components {
         ExpectedVersionRequest: {
             /** Expected Version */
             expected_version: number;
+        };
+        /** GraphEdgeResponse */
+        GraphEdgeResponse: {
+            /**
+             * From Id
+             * Format: uuid
+             */
+            from_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "TASK_DEPENDENCY" | "MILESTONE_GATE";
+            /**
+             * Strength
+             * @enum {string}
+             */
+            strength: "HARD" | "ADVISORY";
+            /**
+             * To Id
+             * Format: uuid
+             */
+            to_id: string;
+        };
+        /** GraphNodeResponse */
+        GraphNodeResponse: {
+            /** Active Blocker Count */
+            active_blocker_count: number;
+            /** Advisory Pending */
+            advisory_pending: string[];
+            /** Blocked By */
+            blocked_by: string[];
+            /** Dr Application Id */
+            dr_application_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "TASK" | "MILESTONE";
+            /** Label */
+            label: string;
+            /** Ready */
+            ready: boolean | null;
+            /** Status */
+            status: string;
+            /** Work Stream Id */
+            work_stream_id: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1177,6 +1687,13 @@ export interface components {
             /** Granted At */
             granted_at: string;
         };
+        /** ResumeTaskRequest */
+        ResumeTaskRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Override Reason */
+            override_reason?: string | null;
+        };
         /** SetApplicationOwnerItem */
         SetApplicationOwnerItem: {
             /** Owner Order */
@@ -1220,6 +1737,134 @@ export interface components {
             expected_version: number;
             /** Network Cut At */
             network_cut_at?: string | null;
+        };
+        /** StartTaskRequest */
+        StartTaskRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Override Reason */
+            override_reason?: string | null;
+        };
+        /** SubmitValidationRequest */
+        SubmitValidationRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Verification Note */
+            verification_note?: string | null;
+        };
+        /** TaskDependencyResponse */
+        TaskDependencyResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By User Id
+             * Format: uuid
+             */
+            created_by_user_id: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Dependency Type */
+            dependency_type: string;
+            /**
+             * Dr Event Id
+             * Format: uuid
+             */
+            dr_event_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Predecessor Task Id
+             * Format: uuid
+             */
+            predecessor_task_id: string;
+            /** Strength */
+            strength: string;
+            /**
+             * Successor Task Id
+             * Format: uuid
+             */
+            successor_task_id: string;
+        };
+        /** TaskListResponse */
+        TaskListResponse: {
+            /** Tasks */
+            tasks: components["schemas"]["TaskResponse"][];
+        };
+        /** TaskResponse */
+        TaskResponse: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Assignee User Id */
+            current_assignee_user_id: string | null;
+            /** Description */
+            description: string | null;
+            /** Dr Application Id */
+            dr_application_id: string | null;
+            /**
+             * Dr Event Id
+             * Format: uuid
+             */
+            dr_event_id: string;
+            /** Evidence Min Count */
+            evidence_min_count: number;
+            /** Evidence Required */
+            evidence_required: boolean;
+            /** Expected Duration Minutes */
+            expected_duration_minutes: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Needs Specific Validation */
+            needs_specific_validation: boolean;
+            /**
+             * Owning Team Id
+             * Format: uuid
+             */
+            owning_team_id: string;
+            /** Parent Task Id */
+            parent_task_id: string | null;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "PRE_DR" | "FAILOVER" | "VALIDATION" | "FAILBACK" | "POST_DR";
+            /** Source Import Id */
+            source_import_id: string | null;
+            /** Source Import Row */
+            source_import_row: string | null;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "NOT_STARTED" | "IN_PROGRESS" | "BLOCKED" | "READY_FOR_VALIDATION" | "COMPLETED" | "CANCELLED";
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Verification Note Required */
+            verification_note_required: boolean;
+            /** Version */
+            version: number;
+            /** Work Stream Id */
+            work_stream_id: string | null;
         };
         /** TeamListResponse */
         TeamListResponse: {
@@ -1322,6 +1967,47 @@ export interface components {
             /** Tier Id */
             tier_id?: string | null;
         };
+        /**
+         * UpdateTaskRequest
+         * @description `PATCH /tasks/{id}` (API_CONTRACT.md:158). Only fields present in the body change
+         *     (`model_fields_set`); the defaults below are never applied. `extra="forbid"` is what keeps status,
+         *     Owning Team, assignee, context, phase and parent out (422).
+         */
+        UpdateTaskRequest: {
+            /** Description */
+            description?: string | null;
+            /**
+             * Evidence Min Count
+             * @default 1
+             */
+            evidence_min_count: number;
+            /**
+             * Evidence Required
+             * @default true
+             */
+            evidence_required: boolean;
+            /** Expected Duration Minutes */
+            expected_duration_minutes?: number | null;
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Needs Specific Validation
+             * @default false
+             */
+            needs_specific_validation: boolean;
+            /** Sort Order */
+            sort_order?: number | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Verification Note Required
+             * @default true
+             */
+            verification_note_required: boolean;
+        };
         /** UpdateTiersRequest */
         UpdateTiersRequest: {
             /** Tiers */
@@ -1347,6 +2033,15 @@ export interface components {
             /** Job Title */
             job_title: string | null;
         };
+        /** ValidateTaskRequest */
+        ValidateTaskRequest: {
+            /** Approve */
+            approve: boolean;
+            /** Expected Version */
+            expected_version: number;
+            /** Note */
+            note?: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1355,6 +2050,51 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WorkStreamListResponse */
+        WorkStreamListResponse: {
+            /** Work Streams */
+            work_streams: components["schemas"]["WorkStreamResponse"][];
+        };
+        /** WorkStreamResponse */
+        WorkStreamResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Dr Event Id
+             * Format: uuid
+             */
+            dr_event_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lead User Id */
+            lead_user_id: string | null;
+            /** Name */
+            name: string;
+            /** Owning Team Id */
+            owning_team_id: string | null;
+            /** Sequence Order */
+            sequence_order: number | null;
+            /**
+             * Stream Type
+             * @enum {string}
+             */
+            stream_type: "NETWORK" | "STORAGE" | "DATABASE" | "APPLICATIONS" | "MONITORING" | "VALIDATION" | "CUSTOM";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
         };
     };
     responses: never;
@@ -2037,7 +2777,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DrEventResponse"];
+                    "application/json": components["schemas"]["DrEventDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2132,7 +2872,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ExpectedVersionRequest"];
+                "application/json": components["schemas"]["CloseEventRequest"];
             };
         };
         responses: {
@@ -2143,6 +2883,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dependency_graph_route_api_v1_dr_events__event_id__dependency_graph_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyGraphResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2279,6 +3050,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tasks_route_api_v1_dr_events__event_id__tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_task_api_v1_dr_events__event_id__tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_work_streams_route_api_v1_dr_events__event_id__work_streams_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkStreamListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_work_stream_api_v1_dr_events__event_id__work_streams_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkStreamRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkStreamResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2501,6 +3404,346 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_task_dependency_api_v1_task_dependencies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTaskDependencyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDependencyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_task_dependency_api_v1_task_dependencies__dependency_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dependency_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDependencyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_route_api_v1_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_task_api_v1_tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_block_task_api_v1_tasks__task_id__block_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_cancel_task_api_v1_tasks__task_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resume_task_api_v1_tasks__task_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResumeTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_start_task_api_v1_tasks__task_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_submit_task_validation_api_v1_tasks__task_id__submit_validation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitValidationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_validate_task_api_v1_tasks__task_id__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidateTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
