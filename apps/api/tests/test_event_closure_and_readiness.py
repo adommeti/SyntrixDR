@@ -17,7 +17,17 @@ from app.dr_events.models import DrEvent
 from app.dr_events.readiness_service import evaluate_readiness
 from app.dr_events.transition_service import DrEventTransitionService
 from app.work_streams.commands import create_work_stream
-from tests.factories import World, audit_actions, build_world, count, headers, http, login, seed_task
+from tests.factories import (
+    World,
+    audit_actions,
+    build_world,
+    count,
+    headers,
+    http,
+    login,
+    seed_milestone,
+    seed_task,
+)
 
 pytestmark = [pytest.mark.transitions]
 
@@ -357,3 +367,62 @@ async def test_every_lifecycle_audit_row_is_linked_to_its_event(
     } <= actions
     unlinked = sorted(r.action for r in rows if r.dr_event_id != event_id)
     assert unlinked == [], f"audit rows missing dr_event_id: {unlinked}"
+
+
+# --------------------------------------------------------------------------------------------
+# D-224 readiness.critical_milestone_owner (BUILD-07): a critical Milestone is a MANUAL one (ADR-009)
+# --------------------------------------------------------------------------------------------
+
+
+OWNER_KEY = "readiness.critical_milestone_owner"
+
+
+async def test_a_manual_milestone_without_an_owner_fails_the_key(session: AsyncSession) -> None:
+    w = await build_world(session)
+    assert (await readiness_of(session, w.event_id))["readiness.critical_milestone_owner"] == (
+        True,
+        "HARD_STOP",
+    )
+
+    await seed_milestone(session, w)
+
+    assert (await readiness_of(session, w.event_id))["readiness.critical_milestone_owner"] == (
+        False,
+        "HARD_STOP",
+    )
+
+
+async def test_an_owned_or_automatic_milestone_satisfies_the_key(session: AsyncSession) -> None:
+    w = await build_world(session)
+    await seed_milestone(session, w, owner_id=w.ws_lead_id)
+    await seed_milestone(session, w, confirmation_mode="AUTOMATIC")
+
+    assert (await readiness_of(session, w.event_id))["readiness.critical_milestone_owner"] == (
+        True,
+        "HARD_STOP",
+    )
+
+
+async def test_an_ownerless_manual_milestone_blocks_activation(
+    session: AsyncSession, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    event_id = uuid.uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO dr_events "
+            "(id, name, event_type, status, version, created_by_user_id, event_timezone) "
+            "VALUES (:id, 'Planned', 'PLANNED_DR', 'PLANNED', 1, :u, 'UTC')"
+        ),
+        {"id": event_id, "u": w.admin_id},
+    )
+    ws = await create_work_stream(session, actor_id=w.admin_id, dr_event_id=event_id, name="Net", clock=clock)
+    await seed_milestone(session, w, dr_event_id=event_id, work_stream_id=ws.id)
+
+    with pytest.raises(AppError) as exc:
+        await DrEventTransitionService.activate(
+            session, actor_id=w.admin_id, event_id=event_id, expected_version=1, clock=clock
+        )
+
+    assert exc.value.code == "READINESS_HARD_STOP"
+    assert OWNER_KEY in exc.value.details["failed_keys"]
