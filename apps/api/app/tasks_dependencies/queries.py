@@ -156,6 +156,16 @@ async def is_ready(session: AsyncSession, task: Task) -> bool:
 # --------------------------------------------------------------------------------------------
 
 
+async def task_statuses(session: AsyncSession, task_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """Status of each live Task among `task_ids`; soft-deleted Tasks are absent."""
+    if not task_ids:
+        return {}
+    rows = await session.execute(
+        select(Task.id, Task.status).where(Task.id.in_(task_ids), Task.deleted_at.is_(None))
+    )
+    return {task_id: status for task_id, status in rows}
+
+
 async def get_visible_task(session: AsyncSession, actor_id: uuid.UUID, task_id: uuid.UUID) -> Task | None:
     """None both when the Task doesn't exist and when its Event isn't visible to the actor -- the
     caller renders both as the same 404 (invariant #1)."""
