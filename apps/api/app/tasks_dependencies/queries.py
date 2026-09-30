@@ -1,9 +1,10 @@
 """Read side of the dependency graph: derived Ready, cycle detection, and the Event graph projection.
 
-The graph is Event-scoped. Nodes: Tasks and Milestones. Edges: `task_dependencies` (Task -> Task) and
-`milestone_dependencies` (Milestone -> Task gate). Milestones never have incoming edges here --
-`milestone_tasks` is composition ("contributes/aggregates", DATA_MODEL.md:163-164) and confirmation is
-MANUAL by default, so it isn't a gate -- which is why cycles can only form among Tasks.
+The graph is Event-scoped. Nodes: Tasks and Milestones. Edges: `task_dependencies` (Task -> Task),
+`milestone_dependencies` (Milestone -> Task gate) and, for cycle detection, *required* `milestone_tasks`
+contributions (Task -> Milestone): a Milestone can't reach READY_FOR_CONFIRMATION until its required
+Tasks are COMPLETED, so a gate that leads back to one of them would wait on itself (BUILD-07). Optional
+contributors never hold the Milestone and are not edges.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import uuid
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
 
-from sqlalchemy import DateTime, Select, Text, column, select, table
+from sqlalchemy import Boolean, DateTime, Select, Text, column, select, table
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +34,13 @@ milestones_view = table(
     column("name", Text),
     column("status", Text),
     column("deleted_at", DateTime(timezone=True)),
+)
+#: select()-only view of `milestone_tasks` (owned by `app.milestones`), for the cycle graph.
+milestone_tasks_view = table(
+    "milestone_tasks",
+    column("milestone_id", PgUUID(as_uuid=True)),
+    column("task_id", PgUUID(as_uuid=True)),
+    column("is_required", Boolean),
 )
 
 _TASK_SATISFIED = "COMPLETED"
@@ -213,16 +221,36 @@ async def live_milestone_gate_exists(
 # --------------------------------------------------------------------------------------------
 
 
-async def _live_task_edges(
+async def _live_graph_edges(
     session: AsyncSession, dr_event_id: uuid.UUID
 ) -> list[tuple[uuid.UUID, uuid.UUID]]:
-    """Every live Task -> Task edge in the Event, any strength: an ADVISORY cycle is still a cycle."""
-    rows = await session.execute(
+    """Every live edge in the Event, any strength -- an ADVISORY cycle is still a cycle: Task -> Task,
+    gate Milestone -> Task, and required contribution Task -> Milestone (module docstring). Task and
+    Milestone ids are both UUIDs, so one node space holds them."""
+    live_tasks = select(Task.id).where(Task.dr_event_id == dr_event_id, Task.deleted_at.is_(None))
+    live_milestones = select(milestones_view.c.id).where(
+        milestones_view.c.dr_event_id == dr_event_id, milestones_view.c.deleted_at.is_(None)
+    )
+    task_edges = await session.execute(
         select(TaskDependency.predecessor_task_id, TaskDependency.successor_task_id).where(
             TaskDependency.dr_event_id == dr_event_id, TaskDependency.deleted_at.is_(None)
         )
     )
-    return [(p, s) for p, s in rows]
+    gates = await session.execute(
+        select(MilestoneDependency.milestone_id, MilestoneDependency.successor_task_id).where(
+            MilestoneDependency.deleted_at.is_(None),
+            MilestoneDependency.milestone_id.in_(live_milestones),
+            MilestoneDependency.successor_task_id.in_(live_tasks),
+        )
+    )
+    contributions = await session.execute(
+        select(milestone_tasks_view.c.task_id, milestone_tasks_view.c.milestone_id).where(
+            milestone_tasks_view.c.is_required.is_(True),
+            milestone_tasks_view.c.milestone_id.in_(live_milestones),
+            milestone_tasks_view.c.task_id.in_(live_tasks),
+        )
+    )
+    return [(p, s) for p, s in [*task_edges, *gates, *contributions]]
 
 
 def cycle_path(
@@ -276,15 +304,17 @@ def has_cycle(edges: list[tuple[uuid.UUID, uuid.UUID]]) -> bool:
 async def find_cycle_path(
     session: AsyncSession, dr_event_id: uuid.UUID, predecessor_id: uuid.UUID, successor_id: uuid.UUID
 ) -> list[uuid.UUID] | None:
-    """`cycle_path` over the Event's live edges. The caller must hold the Event's dependency-graph lock,
-    or a concurrent insert could close a cycle this check never saw."""
-    return cycle_path(await _live_task_edges(session, dr_event_id), predecessor_id, successor_id)
+    """`cycle_path` over the Event's live edges (all three kinds). `predecessor_id -> successor_id` is the
+    proposed edge: a Task edge, a gate (Milestone -> Task) or a required contribution (Task ->
+    Milestone). The caller must hold the Event's dependency-graph lock (ADR-041), or a concurrent insert
+    could close a cycle this check never saw."""
+    return cycle_path(await _live_graph_edges(session, dr_event_id), predecessor_id, successor_id)
 
 
 async def event_graph_has_cycle(session: AsyncSession, dr_event_id: uuid.UUID) -> bool:
     """`has_cycle` over the Event's live edges. The API rejects cycles at write time, so this only ever
     fires on rows written around it -- which is what D-224's readiness key is for."""
-    return has_cycle(await _live_task_edges(session, dr_event_id))
+    return has_cycle(await _live_graph_edges(session, dr_event_id))
 
 
 # --------------------------------------------------------------------------------------------
