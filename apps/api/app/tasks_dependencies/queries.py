@@ -1,9 +1,10 @@
 """Read side of the dependency graph: derived Ready, cycle detection, and the Event graph projection.
 
-The graph is Event-scoped. Nodes: Tasks and Milestones. Edges: `task_dependencies` (Task -> Task) and
-`milestone_dependencies` (Milestone -> Task gate). Milestones never have incoming edges here --
-`milestone_tasks` is composition ("contributes/aggregates", DATA_MODEL.md:163-164) and confirmation is
-MANUAL by default, so it isn't a gate -- which is why cycles can only form among Tasks.
+The graph is Event-scoped. Nodes: Tasks and Milestones. Edges: `task_dependencies` (Task -> Task),
+`milestone_dependencies` (Milestone -> Task gate) and, for cycle detection, *required* `milestone_tasks`
+contributions (Task -> Milestone): a Milestone can't reach READY_FOR_CONFIRMATION until its required
+Tasks are COMPLETED, so a gate that leads back to one of them would wait on itself (BUILD-07). Optional
+contributors never hold the Milestone and are not edges.
 """
 
 from __future__ import annotations
@@ -12,18 +13,21 @@ import uuid
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
 
-from sqlalchemy import DateTime, Select, Text, column, select, table
+from sqlalchemy import Boolean, DateTime, Select, Text, column, func, select, table
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockers.queries import count_active_blockers_by_task
+from app.core.audit import AuditEvent
 from app.dr_events.participants import user_can_see_event
 from app.dr_events.queries import get_event
 from app.tasks_dependencies.models import MilestoneDependency, Task, TaskDependency
+from app.tasks_dependencies.policies import can_in_task_scope
+from app.users_teams_org.authorization import Capability
 from app.work_streams.queries import list_monitoring_stream_ids
 
-#: select()-only view of `milestones`. BUILD-07 owns the real model (BUILD-06.plan.md Risk #13); this
-#: isn't on `Base.metadata`, so it can't collide with `core/external_refs.py`'s FK stub or that model.
+#: select()-only view of `milestones` (owned by `app.milestones`). Task code reads it here instead of
+#: importing that module, which itself reads Task state through this module -- no import cycle.
 milestones_view = table(
     "milestones",
     column("id", PgUUID(as_uuid=True)),
@@ -33,6 +37,13 @@ milestones_view = table(
     column("name", Text),
     column("status", Text),
     column("deleted_at", DateTime(timezone=True)),
+)
+#: select()-only view of `milestone_tasks` (owned by `app.milestones`), for the cycle graph.
+milestone_tasks_view = table(
+    "milestone_tasks",
+    column("milestone_id", PgUUID(as_uuid=True)),
+    column("task_id", PgUUID(as_uuid=True)),
+    column("is_required", Boolean),
 )
 
 _TASK_SATISFIED = "COMPLETED"
@@ -156,6 +167,16 @@ async def is_ready(session: AsyncSession, task: Task) -> bool:
 # --------------------------------------------------------------------------------------------
 
 
+async def task_statuses(session: AsyncSession, task_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """Status of each live Task among `task_ids`; soft-deleted Tasks are absent."""
+    if not task_ids:
+        return {}
+    rows = await session.execute(
+        select(Task.id, Task.status).where(Task.id.in_(task_ids), Task.deleted_at.is_(None))
+    )
+    return {task_id: status for task_id, status in rows}
+
+
 async def get_visible_task(session: AsyncSession, actor_id: uuid.UUID, task_id: uuid.UUID) -> Task | None:
     """None both when the Task doesn't exist and when its Event isn't visible to the actor -- the
     caller renders both as the same 404 (invariant #1)."""
@@ -203,16 +224,36 @@ async def live_milestone_gate_exists(
 # --------------------------------------------------------------------------------------------
 
 
-async def _live_task_edges(
+async def _live_graph_edges(
     session: AsyncSession, dr_event_id: uuid.UUID
 ) -> list[tuple[uuid.UUID, uuid.UUID]]:
-    """Every live Task -> Task edge in the Event, any strength: an ADVISORY cycle is still a cycle."""
-    rows = await session.execute(
+    """Every live edge in the Event, any strength -- an ADVISORY cycle is still a cycle: Task -> Task,
+    gate Milestone -> Task, and required contribution Task -> Milestone (module docstring). Task and
+    Milestone ids are both UUIDs, so one node space holds them."""
+    live_tasks = select(Task.id).where(Task.dr_event_id == dr_event_id, Task.deleted_at.is_(None))
+    live_milestones = select(milestones_view.c.id).where(
+        milestones_view.c.dr_event_id == dr_event_id, milestones_view.c.deleted_at.is_(None)
+    )
+    task_edges = await session.execute(
         select(TaskDependency.predecessor_task_id, TaskDependency.successor_task_id).where(
             TaskDependency.dr_event_id == dr_event_id, TaskDependency.deleted_at.is_(None)
         )
     )
-    return [(p, s) for p, s in rows]
+    gates = await session.execute(
+        select(MilestoneDependency.milestone_id, MilestoneDependency.successor_task_id).where(
+            MilestoneDependency.deleted_at.is_(None),
+            MilestoneDependency.milestone_id.in_(live_milestones),
+            MilestoneDependency.successor_task_id.in_(live_tasks),
+        )
+    )
+    contributions = await session.execute(
+        select(milestone_tasks_view.c.task_id, milestone_tasks_view.c.milestone_id).where(
+            milestone_tasks_view.c.is_required.is_(True),
+            milestone_tasks_view.c.milestone_id.in_(live_milestones),
+            milestone_tasks_view.c.task_id.in_(live_tasks),
+        )
+    )
+    return [(p, s) for p, s in [*task_edges, *gates, *contributions]]
 
 
 def cycle_path(
@@ -266,15 +307,17 @@ def has_cycle(edges: list[tuple[uuid.UUID, uuid.UUID]]) -> bool:
 async def find_cycle_path(
     session: AsyncSession, dr_event_id: uuid.UUID, predecessor_id: uuid.UUID, successor_id: uuid.UUID
 ) -> list[uuid.UUID] | None:
-    """`cycle_path` over the Event's live edges. The caller must hold the Event's dependency-graph lock,
-    or a concurrent insert could close a cycle this check never saw."""
-    return cycle_path(await _live_task_edges(session, dr_event_id), predecessor_id, successor_id)
+    """`cycle_path` over the Event's live edges (all three kinds). `predecessor_id -> successor_id` is the
+    proposed edge: a Task edge, a gate (Milestone -> Task) or a required contribution (Task ->
+    Milestone). The caller must hold the Event's dependency-graph lock (ADR-041), or a concurrent insert
+    could close a cycle this check never saw."""
+    return cycle_path(await _live_graph_edges(session, dr_event_id), predecessor_id, successor_id)
 
 
 async def event_graph_has_cycle(session: AsyncSession, dr_event_id: uuid.UUID) -> bool:
     """`has_cycle` over the Event's live edges. The API rejects cycles at write time, so this only ever
     fires on rows written around it -- which is what D-224's readiness key is for."""
-    return has_cycle(await _live_task_edges(session, dr_event_id))
+    return has_cycle(await _live_graph_edges(session, dr_event_id))
 
 
 # --------------------------------------------------------------------------------------------
@@ -516,3 +559,119 @@ async def owning_team_ids(session: AsyncSession, dr_event_id: uuid.UUID) -> list
         .distinct()
     )
     return list(result.scalars().all())
+
+
+@dataclass(frozen=True)
+class GateRow:
+    id: uuid.UUID
+    milestone_id: uuid.UUID
+    successor_task_id: uuid.UUID
+    strength: str
+
+
+async def gates_by_milestone(
+    session: AsyncSession, milestone_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[GateRow]]:
+    """Live gates of these Milestones onto live Tasks, for the Milestone read model."""
+    by_milestone: dict[uuid.UUID, list[GateRow]] = {m: [] for m in milestone_ids}
+    if not milestone_ids:
+        return by_milestone
+    rows = await session.execute(
+        select(
+            MilestoneDependency.id,
+            MilestoneDependency.milestone_id,
+            MilestoneDependency.successor_task_id,
+            MilestoneDependency.strength,
+        )
+        .join(Task, Task.id == MilestoneDependency.successor_task_id)
+        .where(
+            MilestoneDependency.milestone_id.in_(milestone_ids),
+            MilestoneDependency.deleted_at.is_(None),
+            Task.deleted_at.is_(None),
+        )
+        .order_by(MilestoneDependency.created_at, MilestoneDependency.id)
+    )
+    for gate_id, milestone_id, task_id, strength in rows:
+        by_milestone[milestone_id].append(GateRow(gate_id, milestone_id, task_id, strength))
+    return by_milestone
+
+
+async def lock_visible_task(session: AsyncSession, actor_id: uuid.UUID, task_id: uuid.UUID) -> Task | None:
+    """The live Task under `FOR UPDATE` (populate_existing: the version check must see the locked row),
+    or None when missing or in an Event the actor can't see -- both are the same 404."""
+    task = (
+        await session.execute(
+            select(Task)
+            .where(Task.id == task_id, Task.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if task is None or not await user_can_see_event(session, actor_id, task.dr_event_id):
+        return None
+    return task
+
+
+async def holds_in_task_scope(
+    session: AsyncSession, actor_id: uuid.UUID, capability: Capability, task: Task
+) -> bool:
+    """`capability` in any scope covering this Task -- Owning Team, Work Stream (incl. its designated
+    Lead), Application -- the same resolution the Task commands use (ADR-042)."""
+    return await can_in_task_scope(session, actor_id, capability, task)
+
+
+@dataclass(frozen=True)
+class VersionedChange:
+    version: int
+    action: str
+    actor_user_id: uuid.UUID | None
+    metadata: dict[str, object]
+
+
+async def task_changes_after(
+    session: AsyncSession, task_id: uuid.UUID, version: int
+) -> list[VersionedChange]:
+    """Every Task audit row that moved the version past `version`, oldest first. Each versioned Task
+    change writes exactly one such row (`transition_service._finish`, `commands.apply_assignment`,
+    `commands.update_task_metadata`); D-214 reads them to see what came between."""
+    rows = await session.execute(
+        select(AuditEvent.after_data, AuditEvent.action, AuditEvent.actor_user_id, AuditEvent.metadata_)
+        .where(
+            AuditEvent.entity_type == "TASK",
+            AuditEvent.entity_id == task_id,
+            AuditEvent.after_data["version"].as_integer() > version,
+        )
+        .order_by(AuditEvent.after_data["version"].as_integer())
+    )
+    return [
+        VersionedChange(int(after["version"]), action, actor, dict(metadata or {}))
+        for after, action, actor, metadata in rows
+    ]
+
+
+OPEN_TASK_STATUSES = ("NOT_STARTED", "IN_PROGRESS", "BLOCKED", "READY_FOR_VALIDATION")
+
+
+async def open_task_counts(
+    session: AsyncSession,
+    *,
+    event_ids: Select[tuple[uuid.UUID]] | list[uuid.UUID],
+    owning_team_id: uuid.UUID | None = None,
+    assignee_ids: list[uuid.UUID] | None = None,
+) -> list[tuple[uuid.UUID | None, uuid.UUID, str, int]]:
+    """(assignee, owning Team, status, count) over live, non-terminal Tasks in `event_ids`, optionally
+    limited to one Owning Team and/or some assignees. Computed live -- nothing is stored (D-212)."""
+    stmt = (
+        select(Task.current_assignee_user_id, Task.owning_team_id, Task.status, func.count())
+        .where(
+            Task.dr_event_id.in_(event_ids),
+            Task.deleted_at.is_(None),
+            Task.status.in_(OPEN_TASK_STATUSES),
+        )
+        .group_by(Task.current_assignee_user_id, Task.owning_team_id, Task.status)
+    )
+    if owning_team_id is not None:
+        stmt = stmt.where(Task.owning_team_id == owning_team_id)
+    if assignee_ids is not None:
+        stmt = stmt.where(Task.current_assignee_user_id.in_(assignee_ids))
+    return [(a, t, s, int(n)) for a, t, s, n in await session.execute(stmt)]

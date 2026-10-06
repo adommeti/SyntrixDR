@@ -43,8 +43,8 @@ def get_url() -> str:
 
 def _is_comparable_table(table_name: str | None) -> bool:
     """True only for fully modeled tables — excludes both un-modeled schema_v1/v2
-    tables (their modules land in later BUILDs), FK-resolution stubs
-    (`app.core.external_refs`, a single `id` column, not the real shape), and
+    tables (their modules land in later BUILDs), FK-resolution stubs (the ADR-032
+    pattern, `info={"fk_resolution_stub": True}`; none remain since BUILD-07), and
     partial_read_only tables (owned by other modules, only queried here).
     Without this, `alembic check` would see every un-modeled table as a pending
     DROP and every stub as a pending ADD (D-247).

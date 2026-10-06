@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dr_events.models import DrApplication, DrEvent
@@ -100,3 +100,8 @@ async def list_descendant_dr_applications(session: AsyncSession, event_id: uuid.
 
 async def get_dr_application(session: AsyncSession, dr_application_id: uuid.UUID) -> DrApplication | None:
     return await session.get(DrApplication, dr_application_id)
+
+
+def live_event_ids() -> Select[tuple[uuid.UUID]]:
+    """Events still running their DR (not CLOSED or CANCELLED) -- for live resource roll-ups."""
+    return select(DrEvent.id).where(DrEvent.status.not_in(("CLOSED", "CANCELLED")))

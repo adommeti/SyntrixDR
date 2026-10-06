@@ -21,6 +21,7 @@ from app.identity_auth.dependencies import get_clock, get_session_store
 from app.identity_auth.models import LocalCredential, ReauthGrant, SessionRecord
 from app.identity_auth.security import PasswordHasher
 from app.identity_auth.session_store import RedisSessionStore
+from app.resources_skills.routes import router as resources_skills_router
 from app.users_teams_org.models import RoleAssignment, Team
 from app.users_teams_org.routes import router
 
@@ -31,6 +32,7 @@ def _build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> 
     app = FastAPI()
     app.add_exception_handler(AppError, app_error_handler)
     app.include_router(router)
+    app.include_router(resources_skills_router)  # `/teams/{id}/workload` moved there (BUILD-07)
 
     async def _get_session_override():  # noqa: ANN202
         yield session

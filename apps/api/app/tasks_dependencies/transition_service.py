@@ -32,6 +32,7 @@ from app.core.errors import AppError, ConcurrencyConflictError, OverrideReasonRe
 from app.core.outbox import write_outbox
 from app.dr_events.commands import record_override
 from app.dr_events.participants import user_can_see_event
+from app.milestones.commands import on_task_changed
 from app.tasks_dependencies.commands import TaskNotFoundError
 from app.tasks_dependencies.models import Task
 from app.tasks_dependencies.policies import (
@@ -198,6 +199,8 @@ async def _finish(
         clock=clock,
         dr_event_id=task.dr_event_id,
     )
+    # Milestones this Task contributes to move with it, in this same transaction (BUILD-07).
+    await on_task_changed(session, task_id=task.id, actor_id=actor_id, clock=clock)
     return task
 
 

@@ -5,7 +5,6 @@ mappers; a missing registration surfaces as NoReferencedTableError / mapper conf
 
 from __future__ import annotations
 
-import itertools
 import subprocess
 import sys
 from pathlib import Path
@@ -25,27 +24,35 @@ OWNED_TABLES = {
     "blockers",
     "validations",
     "work_streams",
+    "milestones",
+    "milestone_tasks",
 }
 MODULES = [
     "app.blockers.models",
     "app.validation_evidence.models",
     "app.tasks_dependencies.models",
     "app.work_streams.models",
+    "app.milestones.models",
 ]
+#: Each module alone, and each module first with the rest after it. Those are the orders where a
+#: missing registration or the tasks_dependencies <-> milestones circular import would break; every
+#: permutation (120 fresh interpreters) adds time without adding a case.
+ORDERS = [(m,) for m in MODULES] + [(m, *[o for o in MODULES if o != m]) for m in MODULES]
 
 
-@pytest.mark.parametrize(
-    "order", list(itertools.permutations(MODULES)), ids=lambda o: ">".join(m.split(".")[1] for m in o)
-)
+@pytest.mark.parametrize("order", ORDERS, ids=lambda o: ">".join(m.split(".")[1] for m in o))
 def test_models_register_and_configure_in_any_import_order(order: tuple[str, ...]) -> None:
     script = "; ".join(f"import {m}" for m in order) + (
         "; from sqlalchemy.orm import configure_mappers; configure_mappers()"
         "; from app.core.database import Base"
         f"; owned = {sorted(OWNED_TABLES)!r}"
-        "; missing = [fk.target_fullname for name in owned for fk in Base.metadata.tables[name].foreign_keys"
+        "; loaded = [n for n in owned if n in Base.metadata.tables]"
+        "; missing = [fk.target_fullname for name in loaded for fk in Base.metadata.tables[name].foreign_keys"
         " if fk.target_fullname.split('.')[0] not in Base.metadata.tables]"
         "; assert not missing, missing"
-        "; [fk.column for name in owned for fk in Base.metadata.tables[name].foreign_keys]"
+        "; [fk.column for name in loaded for fk in Base.metadata.tables[name].foreign_keys]"
+        "; ms = Base.metadata.tables.get('milestones')"
+        "; assert ms is None or not ms.info.get('fk_resolution_stub'), 'milestones is still the FK stub'"
     )
     result = subprocess.run([sys.executable, "-c", script], cwd=_API_DIR, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr[-2000:]

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import FastAPI
@@ -28,6 +28,8 @@ from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.dependencies import get_clock, get_session_store
 from app.identity_auth.models import SessionRecord
 from app.identity_auth.session_store import RedisSessionStore
+from app.milestones.routes import router as milestones_router
+from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.commands import create_draft_task
 from app.tasks_dependencies.routes import router as tasks_router
 from app.users_teams_org.models import RoleAssignment
@@ -377,6 +379,8 @@ def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> F
     app.include_router(tasks_router)
     app.include_router(dr_events_router)
     app.include_router(work_streams_router)
+    app.include_router(milestones_router)
+    app.include_router(resources_skills_router)
 
     async def _session_override():  # noqa: ANN202
         yield session
@@ -429,25 +433,46 @@ async def seed_milestone(
     status: str = "NOT_STARTED",
     work_stream_id: uuid.UUID | None = None,
     dr_event_id: uuid.UUID | None = None,
+    app_scoped: bool = False,
+    confirmation_mode: str = "MANUAL",
+    target_at: datetime | None = None,
+    owner_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
-    """Raw SQL: Milestone creation is BUILD-07's command."""
+    """Raw SQL, so tests can place a Milestone in any state; `create_milestone` is the command.
+    Stream-scoped by default; `app_scoped=True` gives an Application-only Milestone."""
     milestone_id = uuid.uuid4()
     await session.execute(
         text(
-            "INSERT INTO milestones (id, dr_event_id, work_stream_id, name, status, created_by_user_id) "
-            "VALUES (:id, :eid, :ws, :name, CAST(:st AS milestone_status), :uid)"
+            "INSERT INTO milestones (id, dr_event_id, work_stream_id, dr_application_id, name, status, "
+            "confirmation_mode, target_at, owner_user_id, created_by_user_id) "
+            "VALUES (:id, :eid, :ws, :app, :name, CAST(:st AS milestone_status), "
+            "CAST(:mode AS milestone_confirmation_mode), :target, :owner, :uid)"
         ),
         {
             "id": milestone_id,
             "eid": dr_event_id or w.event_id,
-            "ws": work_stream_id or w.work_stream_id,
+            "ws": None if app_scoped else (work_stream_id or w.work_stream_id),
+            "app": w.dr_application_id if app_scoped else None,
             "name": f"Milestone {milestone_id}",
             "st": status,
+            "mode": confirmation_mode,
+            "target": target_at,
+            "owner": owner_id,
             "uid": w.admin_id,
         },
     )
     await session.flush()
     return milestone_id
+
+
+async def seed_contribution(
+    session: AsyncSession, *, milestone_id: uuid.UUID, task_id: uuid.UUID, required: bool = True
+) -> None:
+    await session.execute(
+        text("INSERT INTO milestone_tasks (milestone_id, task_id, is_required) VALUES (:m, :t, :r)"),
+        {"m": milestone_id, "t": task_id, "r": required},
+    )
+    await session.flush()
 
 
 async def seed_gate(

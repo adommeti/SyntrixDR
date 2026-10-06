@@ -60,8 +60,8 @@ class DependencyCycleError(AppError):
 
     def __init__(self, cycle_path: list[uuid.UUID]) -> None:
         super().__init__(
-            f"This dependency would create a cycle through {len(cycle_path) - 1} Task(s); "
-            "a Task would end up waiting on itself.",
+            f"This dependency would create a cycle through {len(cycle_path) - 1} step(s); "
+            "work would end up waiting on itself.",
             details={"cycle_path": [str(n) for n in cycle_path]},
         )
 
@@ -233,9 +233,9 @@ class DependencyService:
         strength: str = "HARD",
         clock: Clock | None = None,
     ) -> MilestoneDependency:
-        """No cycle check needed: nothing points *into* a Milestone in this graph (see queries.py), so a
-        gate can never close a cycle. No HTTP route yet -- gate management belongs with BUILD-07's
-        Milestone endpoints (BUILD-06.plan.md Risk #13)."""
+        """A gate is an edge Milestone -> Task, and the Milestone waits on its required contributors, so a
+        gate can close a cycle through them (queries.py docstring) -- checked under the lock like any
+        edge. Reached over HTTP through `POST /dr-events/{id}/milestones` (BUILD-07)."""
         clock = clock or SystemClock()
         successor = await _visible_task(session, actor_id, successor_task_id)
         milestone = await get_milestone(session, milestone_id)
@@ -250,6 +250,9 @@ class DependencyService:
             session, milestone_id=milestone.id, successor_task_id=successor.id
         ):
             raise DependencyExistsError()
+        cycle = await find_cycle_path(session, successor.dr_event_id, milestone.id, successor.id)
+        if cycle is not None:
+            raise DependencyCycleError(cycle)
 
         gate = MilestoneDependency(
             milestone_id=milestone.id,

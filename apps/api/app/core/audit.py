@@ -60,6 +60,7 @@ async def write_audit(
     dr_event_id: uuid.UUID | None = None,
     before: dict[str, Any] | None = None,
     after: dict[str, Any] | None = None,
+    actor_type: str = "USER",
 ) -> None:
     """Write an audit event. Does not commit the session; caller controls the transaction boundary.
 
@@ -73,11 +74,12 @@ async def write_audit(
         dr_event_id: Optional DR Event context (None for auth events)
         before: Optional entity state before the change, for reconstructable history
         after: Optional entity state after the change, for reconstructable history
+        actor_type: "USER" (default) or "SYSTEM" for scheduled jobs acting with no user
     """
     event = AuditEvent(
         dr_event_id=dr_event_id,
         actor_user_id=actor_user_id,
-        actor_type="USER",
+        actor_type=actor_type,
         entity_type=entity_type,
         entity_id=entity_id,
         action=action,

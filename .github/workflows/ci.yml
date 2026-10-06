@@ -83,6 +83,11 @@ jobs:
       SESSION_SECRET: ci-only-not-a-secret
       CSRF_SECRET: ci-only-not-a-secret
       DRCC_TENANT_ID: 00000000-0000-0000-0000-000000000000
+      # Azurite is started below with `docker run` (not `services:`) because the blob-only command with
+      # `--loose --skipApiVersionCheck` (same as docker-compose.yml) cannot be expressed as a service.
+      AZURITE_CI_PORT: "60000"
+      AZURITE_CI_NAME: drcc-ci-azurite-${{ github.run_id }}-${{ github.run_attempt }}
+      AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://localhost:60000/devstoreaccount1;
     steps:
       - uses: actions/checkout@v4
         with: { clean: true }
@@ -114,10 +119,25 @@ jobs:
           uv run alembic upgrade head
           uv run alembic check
           uv run alembic downgrade -1 && uv run alembic upgrade head
+      - name: start azurite (blob only, D-217)
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          docker rm -f "$AZURITE_CI_NAME" >/dev/null 2>&1 || true
+          docker run -d --name "$AZURITE_CI_NAME" -p "127.0.0.1:${AZURITE_CI_PORT}:10000" \
+            mcr.microsoft.com/azure-storage/azurite:3.35.0 \
+            azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data --loose --skipApiVersionCheck
+          for i in $(seq 1 30); do
+            if (exec 3<>"/dev/tcp/127.0.0.1/${AZURITE_CI_PORT}") 2>/dev/null; then echo "azurite listening on :${AZURITE_CI_PORT}"; exit 0; fi
+            sleep 1
+          done
+          echo "azurite did not start"; docker logs "$AZURITE_CI_NAME"; exit 1
       - name: pytest
         if: steps.gate.outputs.ready == 'true'
         working-directory: apps/api
         run: uv run pytest -q --no-header -p no:cacheprovider --junitxml=../../reports/api-junit.xml
+      - name: stop azurite
+        if: always() && steps.gate.outputs.ready == 'true'
+        run: docker rm -f "$AZURITE_CI_NAME" >/dev/null 2>&1 || true
       - uses: pnpm/action-setup@v4 # version read from package.json "packageManager"
         if: steps.gate.outputs.ready == 'true'
       - uses: actions/setup-node@v4

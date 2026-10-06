@@ -19,8 +19,10 @@ from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.oidc import register_entra_oauth
 from app.identity_auth.routes import router as identity_auth_router
 from app.identity_auth.session_store import RedisSessionStore
+from app.milestones.routes import router as milestones_router
 from app.plans_import.routes import router as plans_import_router
 from app.policies_admin.routes import router as policies_admin_router
+from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.routes import router as tasks_dependencies_router
 from app.users_teams_org.routes import router as users_teams_org_router
 from app.work_streams.routes import router as work_streams_router
@@ -79,6 +81,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(dr_events_router)
     app.include_router(tasks_dependencies_router)
     app.include_router(work_streams_router)
+    app.include_router(milestones_router)
+    app.include_router(resources_skills_router)
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:

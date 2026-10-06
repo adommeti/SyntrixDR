@@ -153,7 +153,9 @@ GRANTS: dict[Capability, dict[str, bool | str]] = {
     Capability.CONFIRM_SHARED_MILESTONE: {
         "GLOBAL_ADMIN": True,
         "DR_COORDINATOR": True,
-        "WORK_STREAM_LEAD": True,
+        # The Lead of *this* Milestone's stream (BUILD-07.plan.md): `True` let any stream's Lead
+        # confirm any Event's Milestone. Same reading as ADR-042's other Lead rows.
+        "WORK_STREAM_LEAD": "SCOPE",
     },
     Capability.VALIDATE_APPLICATION_WORK: {
         "GLOBAL_ADMIN": True,

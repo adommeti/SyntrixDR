@@ -14,14 +14,13 @@ from app.identity_auth.dependencies import (
     RequireReauthDependency,
 )
 from app.users_teams_org.commands import create_local_user
-from app.users_teams_org.queries import get_me, get_team_workload, get_user, list_teams
+from app.users_teams_org.queries import get_me, get_user, list_teams
 from app.users_teams_org.schemas import (
     CreateLocalUserRequest,
     CreateLocalUserResponse,
     MeResponse,
     TeamListResponse,
     TeamResponse,
-    TeamWorkloadResponse,
     UserResponse,
 )
 
@@ -70,16 +69,6 @@ async def list_teams_route(session: DbSession, session_data: CurrentSession) -> 
             for t in teams
         ]
     )
-
-
-@router.get("/teams/{team_id}/workload")
-async def get_team_workload_route(
-    team_id: uuid.UUID, session: DbSession, session_data: CurrentSession
-) -> TeamWorkloadResponse:
-    workload = await get_team_workload(session, team_id)
-    if workload is None:
-        raise HTTPException(status_code=404)
-    return TeamWorkloadResponse(**workload)  # type: ignore[arg-type]
 
 
 @router.post(

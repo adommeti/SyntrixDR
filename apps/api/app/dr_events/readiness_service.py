@@ -7,16 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.applications_catalog.queries import list_application_ids_with_primary_owner
 from app.dr_events.models import DrApplication, DrEvent
+from app.milestones.queries import manual_milestone_without_owner_exists
 from app.policies_admin.queries import PolicyService
 from app.tasks_dependencies.queries import event_graph_has_cycle, live_monitoring_task_exists, owning_team_ids
 from app.users_teams_org.queries import live_team_ids
 from app.work_streams.queries import every_stream_has_a_lead
 
-#: D-224 readiness catalog has 13 keys (FREEZE_ADDENDUM.md:60); these 10 are computable today. BUILD-06
+#: D-224 readiness catalog has 13 keys (FREEZE_ADDENDUM.md:60); these 11 are computable today. BUILD-06
 #: added `.dependency_graph_acyclic`, `.task_owning_team`, `.work_stream_lead` and
-#: `.monitoring_task_present`. The other 3 (`readiness.failback_plan_exists`,
-#: `.critical_milestone_owner`, `.needs_review_resolved`) still reference entities or commands that
-#: don't exist yet, and are deliberately never evaluated here, not faked as passing.
+#: `.monitoring_task_present`; BUILD-07 `.critical_milestone_owner`. The other 2
+#: (`readiness.failback_plan_exists`, `.needs_review_resolved`) still reference entities or commands
+#: that don't exist yet, and are deliberately never evaluated here, not faked as passing.
 EVALUATED_KEYS = (
     "readiness.event_timezone_set",
     "readiness.coordinator_assigned",
@@ -28,6 +29,7 @@ EVALUATED_KEYS = (
     "readiness.task_owning_team",
     "readiness.work_stream_lead",
     "readiness.monitoring_task_present",
+    "readiness.critical_milestone_owner",
 )
 
 #: D-224: "dependency graph acyclic — HARD_STOP and not configurable". A cycle is invalid outright
@@ -83,6 +85,10 @@ async def evaluate_readiness(session: AsyncSession, event: DrEvent) -> list[Read
         "readiness.task_owning_team": set(team_ids) <= await live_team_ids(session, team_ids),
         "readiness.work_stream_lead": await every_stream_has_a_lead(session, event.id),
         "readiness.monitoring_task_present": await live_monitoring_task_exists(session, event.id),
+        # A critical Milestone is a MANUAL one (ADR-009); none at all protects nothing, so passes.
+        "readiness.critical_milestone_owner": not await manual_milestone_without_owner_exists(
+            session, event.id
+        ),
     }
 
     results: list[ReadinessResult] = []

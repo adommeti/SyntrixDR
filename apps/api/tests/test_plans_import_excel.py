@@ -302,6 +302,10 @@ async def test_upload_replay_returns_the_same_import_job(
     app = _build_app(session, redis_client, clock)
     session_id, csrf_token = await _create_session_cookie(session, redis_client, clock, admin_id)
     headers = _idem_headers(csrf_token)
+    # One file, sent twice -- what a client retry does. Building it twice isn't the same request:
+    # openpyxl stamps the save time into docProps to the second, so two builds straddling a second
+    # boundary differ in bytes and correctly get IDEMPOTENCY_REQUEST_MISMATCH (the old flake).
+    workbook = canonical_workbook()
 
     async with await _client(app) as client:
         # The idempotency hash is derived from the parsed filename + file bytes
@@ -312,13 +316,13 @@ async def test_upload_replay_returns_the_same_import_job(
             f"/api/v1/dr-events/{event_id}/imports/excel",
             cookies={"drcc_session": session_id},
             headers=headers,
-            files={"file": ("plan.xlsx", canonical_workbook(), "application/octet-stream")},
+            files={"file": ("plan.xlsx", workbook, "application/octet-stream")},
         )
         replay = await client.post(
             f"/api/v1/dr-events/{event_id}/imports/excel",
             cookies={"drcc_session": session_id},
             headers=headers,
-            files={"file": ("plan.xlsx", canonical_workbook(), "application/octet-stream")},
+            files={"file": ("plan.xlsx", workbook, "application/octet-stream")},
         )
 
     assert first.status_code == 201
