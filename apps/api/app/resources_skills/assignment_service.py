@@ -112,11 +112,11 @@ class AssignmentService:
             precedence = changes
         if task.status not in _ASSIGNABLE:
             raise TaskNotAssignableError("assign", task.status)
-        if task.current_assignee_user_id == assignee_user_id:
-            return task
+        if precedence is None and task.current_assignee_user_id == assignee_user_id:
+            return task  # a plain no-op; an accepted stale Manager write is never silent (D-214)
 
         previous = task.current_assignee_user_id
-        affected = [u for u in (previous, assignee_user_id) if u is not None]
+        affected = list(dict.fromkeys(u for u in (previous, assignee_user_id) if u is not None))
         metadata: dict[str, object] = {"authority": MANAGER if precedence is not None else authority}
         if precedence is not None:
             superseded_by = list(dict.fromkeys(c.actor_user_id for c in precedence if c.actor_user_id))
