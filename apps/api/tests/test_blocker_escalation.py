@@ -267,9 +267,7 @@ async def test_blockers_on_a_finished_event_or_task_do_not_escalate(
     w = await build_world(session)
     blocker_id = await _open_blocker(session, w, clock, tier="T0")
     if terminal == "event":
-        await session.execute(
-            text("UPDATE dr_events SET status = 'CANCELLED' WHERE id = :e"), {"e": w.event_id}
-        )
+        await session.execute(text("UPDATE dr_events SET status = 'CLOSED' WHERE id = :e"), {"e": w.event_id})
     else:
         await session.execute(
             text(

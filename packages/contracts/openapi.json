@@ -849,6 +849,7 @@
         "description": "`POST /{target_type}/{target_id}/comments` (API_CONTRACT.md:217). Mentions: `@\"Display Name\"`,\n`@handle`, `@email` in the body, and/or explicit `mentioned_user_ids`.",
         "properties": {
           "body": {
+            "maxLength": 10000,
             "minLength": 1,
             "pattern": "\\S",
             "title": "Body",
@@ -860,6 +861,7 @@
               "format": "uuid",
               "type": "string"
             },
+            "maxItems": 50,
             "title": "Mentioned User Ids",
             "type": "array"
           },
