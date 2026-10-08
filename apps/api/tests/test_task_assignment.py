@@ -286,6 +286,48 @@ async def test_manager_precedence_accepts_a_stale_own_team_assignment_after_a_co
     }
 
 
+@pytest.mark.parametrize("intervening", ["coordinator_id", "admin_id"])
+async def test_precedence_onto_the_current_assignee_is_still_recorded(
+    session: AsyncSession, clock: FakeClock, intervening: str
+) -> None:
+    """D-214 says the accepted stale Manager write bumps the version, is audited, records
+    MANAGER_PRECEDENCE and notifies -- also when the Manager names the user the Coordinator chose."""
+    w = await build_world(session)
+    task_id = await seed_task(session, w)
+    await _assign(session, w, clock, intervening, task_id, "teammate_id")  # v1 -> v2
+
+    await _assign(session, w, clock, "manager_id", task_id, "teammate_id", version=1)  # stale, same user
+
+    row = await _task(session, task_id)
+    assert (row.current_assignee_user_id, row.version) == (w.teammate_id, 3)
+    first, second = await _audits(session, task_id)
+    assert (first.actor_user_id, second.actor_user_id) == (getattr(w, intervening), w.manager_id)
+    assert second.metadata["conflict_resolution"] == "MANAGER_PRECEDENCE"
+    override = (
+        await session.execute(
+            text("SELECT override_type, metadata FROM overrides WHERE target_id = :t"), {"t": task_id}
+        )
+    ).one()
+    assert override.override_type == "MANAGER_PRECEDENCE"
+    assert override.metadata["superseded_assignee_user_id"] == str(w.teammate_id)
+    event = (await _assignment_events(session, task_id))[-1]
+    assert event["conflict_resolution"] == "MANAGER_PRECEDENCE"
+    assert sorted(event["affected_user_ids"]) == sorted({str(getattr(w, intervening)), str(w.teammate_id)})
+
+
+async def test_a_fresh_assignment_onto_the_current_assignee_is_a_silent_no_op(
+    session: AsyncSession, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w)
+    await _assign(session, w, clock, "coordinator_id", task_id, "teammate_id")  # v1 -> v2
+
+    await _assign(session, w, clock, "coordinator_id", task_id, "teammate_id", version=2)  # current version
+
+    assert (await _task(session, task_id)).version == 2
+    assert len(await _audits(session, task_id)) == 1
+
+
 async def test_precedence_spans_several_coordinator_assignments(
     session: AsyncSession, clock: FakeClock
 ) -> None:

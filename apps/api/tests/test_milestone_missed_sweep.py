@@ -3,6 +3,7 @@ second scheduler). The sweep body takes the caller's session (DI), like `plans_i
 
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -51,6 +52,27 @@ async def test_the_target_instant_itself_counts_as_passed(session: AsyncSession,
     milestone_id = await seed_milestone(session, w, status="IN_PROGRESS", target_at=clock.now())
 
     assert await sweep_missed_milestones(session, clock) == [milestone_id]
+
+
+async def test_the_sweep_locks_in_id_order_not_target_order(session: AsyncSession, clock: FakeClock) -> None:
+    """Same lock order as `milestone_ids_for_task`, so a Task command recomputing several Milestones
+    and the sweep never take the same rows in opposite orders."""
+    w = await build_world(session)
+    seeded = [
+        await seed_milestone(session, w, status="IN_PROGRESS", target_at=clock.now() - timedelta(minutes=m))
+        for m in (30, 20, 10)
+    ]  # earliest target first
+    # Force the id order to be the reverse of the target order.
+    forced = sorted(uuid.uuid4() for _ in seeded)[::-1]
+    for old, new in zip(seeded, forced, strict=True):
+        await session.execute(
+            text("UPDATE milestones SET id = :new WHERE id = :old"), {"new": new, "old": old}
+        )
+
+    missed = await sweep_missed_milestones(session, clock)
+
+    assert missed == sorted(forced)
+    assert missed != forced
 
 
 async def test_a_second_sweep_writes_nothing(session: AsyncSession, clock: FakeClock) -> None:

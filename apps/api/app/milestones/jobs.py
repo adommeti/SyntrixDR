@@ -20,9 +20,13 @@ from app.milestones.transition_service import InvalidMilestoneTransitionError, M
 async def sweep_missed_milestones(session: AsyncSession, clock: Clock) -> list[uuid.UUID]:
     """Marks every live, non-terminal Milestone whose `target_at` has passed as MISSED. Idempotent: a
     MISSED one is terminal and no longer selected. `miss` re-checks the state under the row lock, so
-    one confirmed between the select and the lock is left ACHIEVED."""
+    one confirmed between the select and the lock is left ACHIEVED.
+
+    Rows are locked in id order -- the same order `milestone_ids_for_task` gives a Task command that
+    recomputes several Milestones -- so the sweep and a concurrent Task command can never wait on each
+    other's locks in opposite orders (a Postgres deadlock would abort one of them)."""
     missed: list[uuid.UUID] = []
-    for milestone_id in await overdue_milestone_ids(session, now=clock.now()):
+    for milestone_id in sorted(await overdue_milestone_ids(session, now=clock.now())):
         try:
             await MilestoneTransitionService.miss(session, milestone_id=milestone_id, clock=clock)
         except InvalidMilestoneTransitionError:
