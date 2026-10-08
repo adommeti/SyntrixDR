@@ -28,7 +28,7 @@ from app.blockers.policies import (
     actor_may_start_blocker,
     actor_may_verify_blocker,
 )
-from app.blockers.queries import count_active_blockers, lock_blocker
+from app.blockers.queries import count_active_blockers, get_blocker, lock_blocker
 from app.comments_mentions_notifications.catalog import AlertType
 from app.comments_mentions_notifications.commands import resolve_alerts
 from app.core.audit import write_audit
@@ -120,19 +120,20 @@ def _snapshot(blocker: Blocker) -> dict[str, Any]:
 
 
 async def _load(session: AsyncSession, actor_id: uuid.UUID, blocker_id: uuid.UUID) -> tuple[Task, Blocker]:
-    """Blocker and its Task, both `FOR UPDATE` (Task first: the lock order every Task command uses, so a
-    concurrent `verify` on a sibling Blocker serialises on the Task row). 404 when the Blocker is
-    missing *or* its Event is invisible to the actor (same shape as the Task commands)."""
-    blocker = await lock_blocker(session, blocker_id)
-    if blocker is None:
+    """Blocker and its Task, both `FOR UPDATE`, taken Task first (the lock order every Task command uses,
+    so a concurrent `verify` on a sibling Blocker serialises on the Task row). The Blocker is read
+    without a lock only to learn its Task. 404 when the Blocker is missing *or* its Event is invisible
+    to the actor (same shape as the Task commands)."""
+    unlocked = await get_blocker(session, blocker_id)
+    if unlocked is None:
         raise BlockerNotFoundError()
-    task = await lock_visible_task(session, actor_id, blocker.task_id)
+    task = await lock_visible_task(session, actor_id, unlocked.task_id)
     if task is None:
         raise BlockerNotFoundError()
-    # Re-lock the Blocker after the Task so the lock order is Task -> Blocker for every caller.
-    locked = await lock_blocker(session, blocker_id)
-    assert locked is not None
-    return task, locked
+    blocker = await lock_blocker(session, blocker_id)
+    if blocker is None:
+        raise BlockerNotFoundError()  # deleted between the read and the lock
+    return task, blocker
 
 
 def _check_version(blocker: Blocker, expected_version: int) -> None:
