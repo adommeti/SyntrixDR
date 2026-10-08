@@ -153,7 +153,7 @@ async def test_escalation_writes_alert_coordinator_notification_audit_and_outbox
     assert (audit.actor_type, audit.actor_user_id) == ("SYSTEM", None)
     assert audit.after_data["tier"] == "T1" and audit.after_data["alert_id"] == str(alert.id)
     assert audit.after_data["notified_user_ids"] == [str(w.coordinator_id)]
-    assert await outbox_types(session, blocker_id) == ["BlockerChanged"]
+    assert sorted(await outbox_types(session, blocker_id)) == ["BlockerChanged", "NotificationCreated"]
 
 
 async def test_no_coordinator_means_an_alert_but_no_notification(

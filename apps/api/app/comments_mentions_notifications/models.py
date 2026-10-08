@@ -94,6 +94,7 @@ class Comment(Base):
     schema_v2 CHECK, D-216). A reply carries `parent_comment_id` on the same target."""
 
     __tablename__ = "comments"
+    __table_args__ = (Index("ix_comments_target", "target_type", "target_id", "created_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     target_type: Mapped[str] = mapped_column(target_type_enum, nullable=False)
