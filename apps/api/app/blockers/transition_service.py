@@ -29,6 +29,8 @@ from app.blockers.policies import (
     actor_may_verify_blocker,
 )
 from app.blockers.queries import count_active_blockers, lock_blocker
+from app.comments_mentions_notifications.catalog import AlertType
+from app.comments_mentions_notifications.commands import resolve_alerts
 from app.core.audit import write_audit
 from app.core.clock import Clock, SystemClock
 from app.core.errors import AppError, ConcurrencyConflictError
@@ -188,6 +190,14 @@ async def _enrol_owner(session: AsyncSession, task: Task, owner_id: uuid.UUID, a
     await enrol_participant(session, task.dr_event_id, owner_id, "BLOCKER_OWNER", added_by_user_id=actor_id)
 
 
+async def _leave_open(session: AsyncSession, blocker: Blocker, at: datetime) -> None:
+    """Leaving OPEN ends the escalation condition: the unresolved escalation alert (the sweep's
+    "already escalated" marker) is resolved, so a Blocker that is re-opened by nobody never re-fires."""
+    await resolve_alerts(
+        session, alert_type=AlertType.BLOCKER_ESCALATED, target_type="BLOCKER", target_id=blocker.id, at=at
+    )
+
+
 class BlockerTransitionService:
     @staticmethod
     async def assign(
@@ -225,6 +235,8 @@ class BlockerTransitionService:
                 raise BlockerRoutingMismatchError()
 
         before = _snapshot(blocker)
+        if blocker.status == OPEN:
+            await _leave_open(session, blocker, now)
         blocker.status = ASSIGNED
         if team_id is not None:
             blocker.blocker_team_id = team_id

@@ -10,7 +10,7 @@ celery_app = Celery(
     "drcc",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.jobs.heartbeat", "app.plans_import.jobs", "app.milestones.jobs"],
+    include=["app.jobs.heartbeat", "app.plans_import.jobs", "app.milestones.jobs", "app.blockers.jobs"],
 )
 
 celery_app.conf.update(
@@ -22,5 +22,6 @@ celery_app.conf.update(
     # The single beat (D-241): docker-compose runs it inside the worker, Azure as one replica.
     beat_schedule={
         "milestones-missed-sweep": {"task": "drcc.sweep_missed_milestones", "schedule": 60.0},
+        "blockers-escalation-sweep": {"task": "drcc.escalate_blockers", "schedule": 30.0},
     },
 )
