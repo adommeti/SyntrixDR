@@ -61,6 +61,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/alerts/{alert_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Acknowledge Alert
+         * @description API_CONTRACT.md:218 -- shared ack, reason where a breach requires it.
+         */
+        post: operations["post_acknowledge_alert_api_v1_alerts__alert_id__acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alerts/{alert_id}/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Snooze Alert
+         * @description API_CONTRACT.md:219 -- personal snooze.
+         */
+        post: operations["post_snooze_alert_api_v1_alerts__alert_id__snooze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/applications": {
         parameters: {
             query?: never;
@@ -1131,6 +1171,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/{target_type}/{target_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Comments Route */
+        get: operations["list_comments_route_api_v1__target_type___target_id__comments_get"];
+        put?: never;
+        /** Post Create Comment */
+        post: operations["post_create_comment_api_v1__target_type___target_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1139,6 +1197,11 @@ export interface components {
         AcceptImportRequest: {
             /** Mapping */
             mapping: components["schemas"]["ColumnMappingRequest"][];
+        };
+        /** AcknowledgeAlertRequest */
+        AcknowledgeAlertRequest: {
+            /** Reason */
+            reason?: string | null;
         };
         /** ActivateEventRequest */
         ActivateEventRequest: {
@@ -1376,6 +1439,42 @@ export interface components {
             /** Target Field */
             target_field: string | null;
         };
+        /** CommentListResponse */
+        CommentListResponse: {
+            /** Comments */
+            comments: components["schemas"]["CommentResponse"][];
+        };
+        /** CommentResponse */
+        CommentResponse: {
+            /**
+             * Author User Id
+             * Format: uuid
+             */
+            author_user_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mentioned User Ids */
+            mentioned_user_ids: string[];
+            /** Parent Comment Id */
+            parent_comment_id: string | null;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+        };
         /** ConfirmMilestoneRequest */
         ConfirmMilestoneRequest: {
             /** Expected Version */
@@ -1396,6 +1495,22 @@ export interface components {
              * Format: uuid
              */
             tier_id: string;
+        };
+        /**
+         * CreateCommentRequest
+         * @description `POST /{target_type}/{target_id}/comments` (API_CONTRACT.md:217). Mentions: `@"Display Name"`,
+         *     `@handle`, `@email` in the body, and/or explicit `mentioned_user_ids`.
+         */
+        CreateCommentRequest: {
+            /** Body */
+            body: string;
+            /**
+             * Mentioned User Ids
+             * @default []
+             */
+            mentioned_user_ids: string[];
+            /** Parent Comment Id */
+            parent_comment_id?: string | null;
         };
         /** CreateDrEventRequest */
         CreateDrEventRequest: {
@@ -2388,6 +2503,14 @@ export interface components {
             /** Source Id */
             source_id?: string | null;
         };
+        /** SnoozeAlertRequest */
+        SnoozeAlertRequest: {
+            /**
+             * Snoozed Until
+             * Format: date-time
+             */
+            snoozed_until: string;
+        };
         /** StartBlockerRequest */
         StartBlockerRequest: {
             /** Expected Version */
@@ -2953,6 +3076,76 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateTiersRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_acknowledge_alert_api_v1_alerts__alert_id__acknowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcknowledgeAlertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_snooze_alert_api_v1_alerts__alert_id__snooze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnoozeAlertRequest"];
             };
         };
         responses: {
@@ -5102,6 +5295,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comments_route_api_v1__target_type___target_id__comments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                target_type: "TASK" | "DR_APPLICATION" | "WORK_STREAM" | "BLOCKER" | "ISSUE_FINDING" | "DR_EVENT" | "MILESTONE";
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_comment_api_v1__target_type___target_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                target_type: "TASK" | "DR_APPLICATION" | "WORK_STREAM" | "BLOCKER" | "ISSUE_FINDING" | "DR_EVENT" | "MILESTONE";
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentResponse"];
                 };
             };
             /** @description Validation Error */
