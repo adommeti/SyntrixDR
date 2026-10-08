@@ -17,7 +17,7 @@ from app.comments_mentions_notifications.catalog import (
     NotificationType,
     Severity,
 )
-from app.comments_mentions_notifications.mentions import parse_mentions
+from app.comments_mentions_notifications.mentions import MAX_COMMENT_CHARS, MAX_MENTIONS, parse_mentions
 from app.comments_mentions_notifications.models import Alert, AlertSnooze, Comment, Mention, Notification
 from app.comments_mentions_notifications.policies import actor_may_acknowledge_alert, actor_may_comment
 from app.comments_mentions_notifications.queries import (
@@ -64,6 +64,17 @@ class CommentBodyRequiredError(AppError):
 
     def __init__(self) -> None:
         super().__init__("A comment needs a non-empty body.")
+
+
+class CommentTooLargeError(AppError):
+    code = "COMMENT_TOO_LARGE"
+    status_code = 422
+
+    def __init__(self) -> None:
+        super().__init__(
+            f"A comment is at most {MAX_COMMENT_CHARS} characters and {MAX_MENTIONS} mentions.",
+            details={"max_chars": MAX_COMMENT_CHARS, "max_mentions": MAX_MENTIONS},
+        )
 
 
 class ParentCommentMismatchError(AppError):
@@ -254,6 +265,8 @@ async def create_comment(
     clean = body.strip()
     if not clean:
         raise CommentBodyRequiredError()
+    if len(clean) > MAX_COMMENT_CHARS or len(mentioned_user_ids or []) > MAX_MENTIONS:
+        raise CommentTooLargeError()
     if parent_comment_id is not None:
         parent = await get_comment(session, parent_comment_id)
         if parent is None or (parent.target_type, parent.target_id) != (target_type, target_id):
@@ -268,11 +281,13 @@ async def create_comment(
             unresolved.append(handle)
         else:
             resolved.setdefault(user_id, handle)
-    for user_id in mentioned_user_ids or []:
+    for user_id in list(dict.fromkeys(mentioned_user_ids or []))[:MAX_MENTIONS]:
         if await is_user_active(session, user_id):
             resolved.setdefault(user_id, str(user_id))
         else:
             unresolved.append(str(user_id))
+    if len(resolved) > MAX_MENTIONS:
+        raise CommentTooLargeError()
     resolved.pop(actor_id, None)  # mentioning yourself is not a notification
 
     comment = Comment(
@@ -366,6 +381,9 @@ async def acknowledge_alert(
     if alert.alert_type in {t.value for t in BREACH_ALERT_TYPES} and clean_reason is None:
         raise AcknowledgementReasonRequiredError(alert.alert_type)
 
+    # `resolved_at` is deliberately untouched: acknowledging says "seen", not "condition gone". For a
+    # BLOCKER_ESCALATED alert the unresolved row is also the sweep's "already escalated" marker, so
+    # resolving it here would make the sweep re-fire every 30 s for a Blocker that is still unrouted.
     alert.acknowledged_at = clock.now()
     alert.acknowledged_by_user_id = actor_id
     await session.flush()

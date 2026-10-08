@@ -231,3 +231,67 @@ async def test_blocked_at_is_the_clock_not_now(session: AsyncSession, clock: Fak
     blocker_id = await seed_blocker(session, w, task_id, blocked_at=clock.now() - timedelta(minutes=15))
 
     assert await escalate_due_blockers(session, clock) == [blocker_id]
+
+
+async def test_the_marker_is_rechecked_under_the_lock(
+    session: AsyncSession, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two overlapping sweeps: the second one, waiting on the row lock, finds the first one's alert
+    once it gets the lock and writes nothing (review finding 1)."""
+    from app.blockers import escalation
+    from app.comments_mentions_notifications.catalog import AlertType, Severity
+    from app.comments_mentions_notifications.commands import raise_alert
+
+    w = await build_world(session)
+    blocker_id = await _open_blocker(session, w, clock, tier="T0")
+    real_lock = escalation.lock_blocker
+
+    async def lock_after_a_rival_escalated(s: AsyncSession, b: uuid.UUID) -> Any:
+        await raise_alert(
+            s, dr_event_id=w.event_id, alert_type=AlertType.BLOCKER_ESCALATED, severity=Severity.HIGH,
+            title="rival", body=None, target_type="BLOCKER", target_id=b, clock=clock,
+        )  # fmt: skip
+        return await real_lock(s, b)
+
+    monkeypatch.setattr(escalation, "lock_blocker", lock_after_a_rival_escalated)
+
+    assert await escalate_due_blockers(session, clock) == []
+    assert len(await _alerts(session, blocker_id)) == 1
+    assert await audit_actions(session, blocker_id) == []
+
+
+@pytest.mark.parametrize("terminal", ["event", "task"])
+async def test_blockers_on_a_finished_event_or_task_do_not_escalate(
+    session: AsyncSession, clock: FakeClock, terminal: str
+) -> None:
+    w = await build_world(session)
+    blocker_id = await _open_blocker(session, w, clock, tier="T0")
+    if terminal == "event":
+        await session.execute(
+            text("UPDATE dr_events SET status = 'CANCELLED' WHERE id = :e"), {"e": w.event_id}
+        )
+    else:
+        await session.execute(
+            text(
+                "UPDATE tasks SET status = 'CANCELLED' "
+                "WHERE id = (SELECT task_id FROM blockers WHERE id = :b)"
+            ),
+            {"b": blocker_id},
+        )
+
+    assert await escalate_due_blockers(session, clock) == []
+
+
+async def test_an_acknowledged_escalation_does_not_refire(session: AsyncSession, clock: FakeClock) -> None:
+    from app.comments_mentions_notifications.commands import acknowledge_alert
+
+    w = await build_world(session)
+    blocker_id = await _open_blocker(session, w, clock, tier="T0")
+    await escalate_due_blockers(session, clock)
+    [alert] = await _alerts(session, blocker_id)
+
+    await acknowledge_alert(session, actor_id=w.coordinator_id, alert_id=alert.id, reason=None, clock=clock)
+    clock.advance(hours=1)
+
+    assert await escalate_due_blockers(session, clock) == []
+    assert len(await _alerts(session, blocker_id)) == 1

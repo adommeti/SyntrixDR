@@ -300,3 +300,46 @@ async def test_comments_over_http_list_in_order_with_mentions(
     assert bad.status_code == 422  # not in the comments subset (schema-level Literal)
     assert len(await notifications_of(session, w.teammate_id)) == 1
     _ = seed_blocker  # keeps the factory import meaningful for the BLOCKER target above
+
+
+async def test_comment_size_and_mention_counts_are_capped(session: AsyncSession, clock: FakeClock) -> None:
+    from app.comments_mentions_notifications.mentions import MAX_COMMENT_CHARS, MAX_MENTIONS
+
+    w = await build_world(session)
+    task_id = await seed_task(session, w)
+    assert len(parse_mentions(" ".join(f"@user{i}" for i in range(MAX_MENTIONS + 20)))) == MAX_MENTIONS
+
+    with pytest.raises(AppError) as e:
+        await create_comment(
+            session,
+            actor_id=w.admin_id,
+            target_type="TASK",
+            target_id=task_id,
+            body="x" * (MAX_COMMENT_CHARS + 1),
+            clock=clock,
+        )
+    assert (e.value.code, e.value.status_code) == ("COMMENT_TOO_LARGE", 422)
+    with pytest.raises(AppError) as e:
+        await create_comment(
+            session, actor_id=w.admin_id, target_type="TASK", target_id=task_id, body="x",
+            mentioned_user_ids=[uuid.uuid4() for _ in range(MAX_MENTIONS + 1)], clock=clock,
+        )  # fmt: skip
+    assert e.value.code == "COMMENT_TOO_LARGE"
+
+
+@pytest.mark.api
+async def test_an_oversized_comment_is_rejected_at_the_schema(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    from app.comments_mentions_notifications.mentions import MAX_COMMENT_CHARS
+
+    w = await build_world(session)
+    task_id = await seed_task(session, w)
+    sid, csrf = await login(session, redis_client, clock, w.admin_id)
+    async with http(session, redis_client, clock) as c:
+        r = await c.post(
+            f"/api/v1/TASK/{task_id}/comments", cookies={"drcc_session": sid}, headers=headers(csrf),
+            json={"body": "x" * (MAX_COMMENT_CHARS + 1)},
+        )  # fmt: skip
+    await redis_client.delete(f"drcc:session:{sid}")
+    assert r.status_code == 422

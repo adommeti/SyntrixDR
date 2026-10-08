@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from app.comments_mentions_notifications.mentions import MAX_COMMENT_CHARS, MAX_MENTIONS
+
 CommentTargetType = Literal[
     "TASK", "DR_APPLICATION", "WORK_STREAM", "BLOCKER", "ISSUE_FINDING", "DR_EVENT", "MILESTONE"
 ]
@@ -36,9 +38,11 @@ class CreateCommentRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    body: str = Field(min_length=1, pattern=r"\S")
+    body: str = Field(min_length=1, max_length=MAX_COMMENT_CHARS, pattern=r"\S")
     parent_comment_id: uuid.UUID | None = None
-    mentioned_user_ids: list[uuid.UUID] = []
+    mentioned_user_ids: list[uuid.UUID] = Field(
+        default=[], max_length=MAX_MENTIONS
+    )  # pydantic copies defaults
 
 
 class AlertResponse(BaseModel):

@@ -74,7 +74,14 @@ async def open_blockers(session: AsyncSession) -> list[OpenBlocker]:
         .join(Task, Task.id == Blocker.task_id)
         .outerjoin(DrApplication, DrApplication.id == Task.dr_application_id)
         .outerjoin(Tier, Tier.id == DrApplication.effective_tier_id)
-        .where(Blocker.deleted_at.is_(None), Blocker.status == "OPEN", Task.deleted_at.is_(None))
+        .join(DrEvent, DrEvent.id == Task.dr_event_id)
+        .where(
+            Blocker.deleted_at.is_(None),
+            Blocker.status == "OPEN",
+            Task.deleted_at.is_(None),
+            Task.status.not_in(("COMPLETED", "CANCELLED")),  # a terminal Task's Blocker is history
+            DrEvent.status.not_in(("CLOSED", "CANCELLED")),  # a finished Event alerts nobody
+        )
         .order_by(Blocker.id)
     )
     return [
@@ -120,6 +127,10 @@ async def escalate_due_blockers(session: AsyncSession, clock: Clock) -> list[uui
         blocker = await lock_blocker(session, candidate.blocker_id)
         if blocker is None or blocker.status != "OPEN":
             continue  # routed between the select and the lock
+        if await has_unresolved_alert(
+            session, alert_type=AlertType.BLOCKER_ESCALATED, target_type="BLOCKER", target_id=blocker.id
+        ):
+            continue  # an overlapping sweep escalated it while we waited for the lock
         await _escalate(session, blocker, candidate, now=now, clock=clock)
         escalated.append(blocker.id)
     return escalated
