@@ -29,6 +29,7 @@ from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.dependencies import get_clock, get_session_store
 from app.identity_auth.models import SessionRecord
 from app.identity_auth.session_store import RedisSessionStore
+from app.issues_findings.routes import router as issues_findings_router
 from app.milestones.routes import router as milestones_router
 from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.commands import create_draft_task
@@ -383,6 +384,7 @@ def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> F
     app.include_router(milestones_router)
     app.include_router(resources_skills_router)
     app.include_router(blockers_router)
+    app.include_router(issues_findings_router)
 
     async def _session_override():  # noqa: ANN202
         yield session
@@ -584,3 +586,47 @@ async def blocker_ids_of(session: AsyncSession, task_id: uuid.UUID) -> list[uuid
         text("SELECT id FROM blockers WHERE task_id = :t ORDER BY created_at, id"), {"t": task_id}
     )
     return [r.id for r in rows]
+
+
+async def seed_issue(
+    session: AsyncSession,
+    w: World,
+    *,
+    status: str = "OPEN",
+    task_id: uuid.UUID | None = None,
+    work_stream_id: uuid.UUID | None = None,
+    dr_application_id: uuid.UUID | None = None,
+    owner_id: uuid.UUID | None = None,
+    created_by: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """Raw SQL, so tests can place an Issue/Finding in any state; `create_issue` is the command."""
+    issue_id = uuid.uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO issue_findings (id, dr_event_id, dr_application_id, work_stream_id, task_id, "
+            "item_type, status, title, description, owner_user_id, created_by_user_id, "
+            "created_at, updated_at) "
+            "VALUES (:id, :eid, :app, :ws, :task, 'ISSUE', CAST(:st AS issue_finding_status), 'seeded', "
+            "'seeded', :owner, :uid, now(), now())"
+        ),
+        {
+            "id": issue_id,
+            "eid": w.event_id,
+            "app": dr_application_id,
+            "ws": work_stream_id,
+            "task": task_id,
+            "st": status,
+            "owner": owner_id,
+            "uid": created_by or w.executor_id,
+        },
+    )
+    return issue_id
+
+
+async def issue_row(session: AsyncSession, issue_id: uuid.UUID) -> Any:
+    return (
+        await session.execute(
+            text("SELECT status, version, resolution_note, resolved_at FROM issue_findings WHERE id = :id"),
+            {"id": issue_id},
+        )
+    ).one()

@@ -20,6 +20,7 @@ from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.oidc import register_entra_oauth
 from app.identity_auth.routes import router as identity_auth_router
 from app.identity_auth.session_store import RedisSessionStore
+from app.issues_findings.routes import router as issues_findings_router
 from app.milestones.routes import router as milestones_router
 from app.plans_import.routes import router as plans_import_router
 from app.policies_admin.routes import router as policies_admin_router
@@ -85,6 +86,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(milestones_router)
     app.include_router(resources_skills_router)
     app.include_router(blockers_router)
+    app.include_router(issues_findings_router)
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
