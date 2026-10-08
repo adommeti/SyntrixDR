@@ -203,6 +203,45 @@
         "title": "ApplicationResponse",
         "type": "object"
       },
+      "AssignBlockerRequest": {
+        "additionalProperties": false,
+        "description": "`POST /blockers/{id}/assign` (API_CONTRACT.md:181): route to a Team queue and/or a resolver.",
+        "properties": {
+          "assignee_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee User Id"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "AssignBlockerRequest",
+        "type": "object"
+      },
       "AssignTaskRequest": {
         "additionalProperties": false,
         "description": "`POST /tasks/{id}/assign` (API_CONTRACT.md:165). No unassign: the contract only assigns\n(BUILD-07.plan.md Risk B4).",
@@ -280,6 +319,193 @@
           "impacted_dr_application_ids"
         ],
         "title": "BlockedPathResponse",
+        "type": "object"
+      },
+      "BlockerListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/BlockerResponse"
+            },
+            "title": "Blockers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "blockers"
+        ],
+        "title": "BlockerListResponse",
+        "type": "object"
+      },
+      "BlockerResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked_at": {
+            "format": "date-time",
+            "title": "Blocked At",
+            "type": "string"
+          },
+          "blocker_owner_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker Owner User Id"
+          },
+          "blocker_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker Team Id"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "claimed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claimed At"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "format": "uuid",
+            "title": "Created By User Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "RESOLVED",
+              "VERIFIED",
+              "CLOSED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "task_id",
+          "reason",
+          "category",
+          "status",
+          "blocker_team_id",
+          "blocker_owner_user_id",
+          "blocked_at",
+          "claimed_at",
+          "resolved_at",
+          "verified_at",
+          "closed_at",
+          "resolution_note",
+          "version",
+          "created_by_user_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BlockerResponse",
         "type": "object"
       },
       "CancelEventRequest": {
@@ -2876,6 +3102,31 @@
         "title": "ReauthResponse",
         "type": "object"
       },
+      "ResolveBlockerRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ResolveBlockerRequest",
+        "type": "object"
+      },
       "ResumeTaskRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3005,6 +3256,20 @@
           "snapshot_data"
         ],
         "title": "SnapshotItemRequest",
+        "type": "object"
+      },
+      "StartBlockerRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "StartBlockerRequest",
         "type": "object"
       },
       "StartFailoverRequest": {
@@ -4031,6 +4296,20 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VerifyBlockerRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "VerifyBlockerRequest",
+        "type": "object"
+      },
       "VolunteerTaskRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4958,6 +5237,212 @@
         ]
       }
     },
+    "/api/v1/blockers/{blocker_id}/assign": {
+      "post": {
+        "operationId": "post_assign_blocker_api_v1_blockers__blocker_id__assign_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blocker_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Blocker Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignBlockerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Assign Blocker",
+        "tags": [
+          "blockers"
+        ]
+      }
+    },
+    "/api/v1/blockers/{blocker_id}/resolve": {
+      "post": {
+        "operationId": "post_resolve_blocker_api_v1_blockers__blocker_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blocker_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Blocker Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveBlockerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Resolve Blocker",
+        "tags": [
+          "blockers"
+        ]
+      }
+    },
+    "/api/v1/blockers/{blocker_id}/start": {
+      "post": {
+        "description": "API_CONTRACT.md:182 -- the route D-211 added.",
+        "operationId": "post_start_blocker_api_v1_blockers__blocker_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blocker_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Blocker Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartBlockerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Start Blocker",
+        "tags": [
+          "blockers"
+        ]
+      }
+    },
+    "/api/v1/blockers/{blocker_id}/verify": {
+      "post": {
+        "description": "API_CONTRACT.md:184 -- VERIFIED then CLOSED atomically; may resume the Task (D-252).",
+        "operationId": "post_verify_blocker_api_v1_blockers__blocker_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blocker_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Blocker Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyBlockerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Verify Blocker",
+        "tags": [
+          "blockers"
+        ]
+      }
+    },
     "/api/v1/dr-events": {
       "get": {
         "operationId": "list_events_route_api_v1_dr_events_get",
@@ -5107,6 +5592,118 @@
         "summary": "Post Activate Event",
         "tags": [
           "dr_events"
+        ]
+      }
+    },
+    "/api/v1/dr-events/{event_id}/blockers": {
+      "get": {
+        "description": "API_CONTRACT.md:180 -- active list by default; `team_id` is a Team's queue (FROZEN \u00a7108).",
+        "operationId": "list_blockers_route_api_v1_dr_events__event_id__blockers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "OPEN",
+                    "ASSIGNED",
+                    "IN_PROGRESS",
+                    "RESOLVED",
+                    "VERIFIED",
+                    "CLOSED"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "team_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Team Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_closed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Closed",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockerListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Blockers Route",
+        "tags": [
+          "blockers"
         ]
       }
     },

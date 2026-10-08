@@ -53,3 +53,34 @@ async def lock_blocker(session: AsyncSession, blocker_id: uuid.UUID) -> Blocker 
             .execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()
+
+
+async def list_blockers(
+    session: AsyncSession,
+    dr_event_id: uuid.UUID,
+    *,
+    status: str | None = None,
+    team_id: uuid.UUID | None = None,
+    task_id: uuid.UUID | None = None,
+    include_closed: bool = False,
+) -> list[Blocker]:
+    """`GET /dr-events/{id}/blockers` (API_CONTRACT.md:180): the Event's active Blockers, oldest
+    first, optionally one Team's queue (FROZEN §108), one status, or one Task; `include_closed` adds
+    the history."""
+    from app.tasks_dependencies.models import Task  # table object only; the FK target is registered
+
+    query = (
+        select(Blocker)
+        .join(Task, Task.id == Blocker.task_id)
+        .where(Task.dr_event_id == dr_event_id, Blocker.deleted_at.is_(None))
+        .order_by(Blocker.blocked_at, Blocker.id)
+    )
+    if not include_closed:
+        query = query.where(Blocker.status != INACTIVE_BLOCKER_STATUS)
+    if status is not None:
+        query = query.where(Blocker.status == status)
+    if team_id is not None:
+        query = query.where(Blocker.blocker_team_id == team_id)
+    if task_id is not None:
+        query = query.where(Blocker.task_id == task_id)
+    return list((await session.execute(query)).scalars().all())

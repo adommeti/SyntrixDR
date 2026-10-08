@@ -336,6 +336,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/blockers/{blocker_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Assign Blocker */
+        post: operations["post_assign_blocker_api_v1_blockers__blocker_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/blockers/{blocker_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Resolve Blocker */
+        post: operations["post_resolve_blocker_api_v1_blockers__blocker_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/blockers/{blocker_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Start Blocker
+         * @description API_CONTRACT.md:182 -- the route D-211 added.
+         */
+        post: operations["post_start_blocker_api_v1_blockers__blocker_id__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/blockers/{blocker_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Verify Blocker
+         * @description API_CONTRACT.md:184 -- VERIFIED then CLOSED atomically; may resume the Task (D-252).
+         */
+        post: operations["post_verify_blocker_api_v1_blockers__blocker_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dr-events": {
         parameters: {
             query?: never;
@@ -382,6 +456,26 @@ export interface paths {
         put?: never;
         /** Post Activate Event */
         post: operations["post_activate_event_api_v1_dr_events__event_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-events/{event_id}/blockers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Blockers Route
+         * @description API_CONTRACT.md:180 -- active list by default; `team_id` is a Team's queue (FROZEN §108).
+         */
+        get: operations["list_blockers_route_api_v1_dr_events__event_id__blockers_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1052,6 +1146,18 @@ export interface components {
             version: number;
         };
         /**
+         * AssignBlockerRequest
+         * @description `POST /blockers/{id}/assign` (API_CONTRACT.md:181): route to a Team queue and/or a resolver.
+         */
+        AssignBlockerRequest: {
+            /** Assignee User Id */
+            assignee_user_id?: string | null;
+            /** Expected Version */
+            expected_version: number;
+            /** Team Id */
+            team_id?: string | null;
+        };
+        /**
          * AssignTaskRequest
          * @description `POST /tasks/{id}/assign` (API_CONTRACT.md:165). No unassign: the contract only assigns
          *     (BUILD-07.plan.md Risk B4).
@@ -1083,6 +1189,69 @@ export interface components {
              * Format: uuid
              */
             root_task_id: string;
+        };
+        /** BlockerListResponse */
+        BlockerListResponse: {
+            /** Blockers */
+            blockers: components["schemas"]["BlockerResponse"][];
+        };
+        /** BlockerResponse */
+        BlockerResponse: {
+            /**
+             * Blocked At
+             * Format: date-time
+             */
+            blocked_at: string;
+            /** Blocker Owner User Id */
+            blocker_owner_user_id: string | null;
+            /** Blocker Team Id */
+            blocker_team_id: string | null;
+            /** Category */
+            category: string | null;
+            /** Claimed At */
+            claimed_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By User Id
+             * Format: uuid
+             */
+            created_by_user_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reason */
+            reason: string;
+            /** Resolution Note */
+            resolution_note: string | null;
+            /** Resolved At */
+            resolved_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "OPEN" | "ASSIGNED" | "IN_PROGRESS" | "RESOLVED" | "VERIFIED" | "CLOSED";
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Verified At */
+            verified_at: string | null;
+            /** Version */
+            version: number;
         };
         /** CancelEventRequest */
         CancelEventRequest: {
@@ -1995,6 +2164,13 @@ export interface components {
             /** Granted At */
             granted_at: string;
         };
+        /** ResolveBlockerRequest */
+        ResolveBlockerRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Resolution Note */
+            resolution_note?: string | null;
+        };
         /** ResumeTaskRequest */
         ResumeTaskRequest: {
             /** Expected Version */
@@ -2038,6 +2214,11 @@ export interface components {
             };
             /** Source Id */
             source_id?: string | null;
+        };
+        /** StartBlockerRequest */
+        StartBlockerRequest: {
+            /** Expected Version */
+            expected_version: number;
         };
         /** StartFailoverRequest */
         StartFailoverRequest: {
@@ -2405,6 +2586,11 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VerifyBlockerRequest */
+        VerifyBlockerRequest: {
+            /** Expected Version */
+            expected_version: number;
         };
         /** VolunteerTaskRequest */
         VolunteerTaskRequest: {
@@ -3067,6 +3253,146 @@ export interface operations {
             };
         };
     };
+    post_assign_blocker_api_v1_blockers__blocker_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                blocker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignBlockerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resolve_blocker_api_v1_blockers__blocker_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                blocker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveBlockerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_start_blocker_api_v1_blockers__blocker_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                blocker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartBlockerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_verify_blocker_api_v1_blockers__blocker_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                blocker_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyBlockerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_events_route_api_v1_dr_events_get: {
         parameters: {
             query?: never;
@@ -3173,6 +3499,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_blockers_route_api_v1_dr_events__event_id__blockers_get: {
+        parameters: {
+            query?: {
+                status?: ("OPEN" | "ASSIGNED" | "IN_PROGRESS" | "RESOLVED" | "VERIFIED" | "CLOSED") | null;
+                team_id?: string | null;
+                task_id?: string | null;
+                include_closed?: boolean;
+            };
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockerListResponse"];
                 };
             };
             /** @description Validation Error */

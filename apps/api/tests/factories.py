@@ -20,6 +20,7 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.blockers.routes import router as blockers_router
 from app.core.clock import Clock, FakeClock
 from app.core.database import get_request_session
 from app.core.errors import AppError, app_error_handler
@@ -381,6 +382,7 @@ def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> F
     app.include_router(work_streams_router)
     app.include_router(milestones_router)
     app.include_router(resources_skills_router)
+    app.include_router(blockers_router)
 
     async def _session_override():  # noqa: ANN202
         yield session
