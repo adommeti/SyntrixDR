@@ -22,7 +22,6 @@ from tests.factories import (
     http,
     login,
     notifications_of,
-    seed_blocker,
     seed_issue,
     seed_milestone,
     seed_task,
@@ -299,7 +298,6 @@ async def test_comments_over_http_list_in_order_with_mentions(
     assert bodies[1]["parent_comment_id"] == first.json()["id"]
     assert bad.status_code == 422  # not in the comments subset (schema-level Literal)
     assert len(await notifications_of(session, w.teammate_id)) == 1
-    _ = seed_blocker  # keeps the factory import meaningful for the BLOCKER target above
 
 
 async def test_comment_size_and_mention_counts_are_capped(session: AsyncSession, clock: FakeClock) -> None:
@@ -307,7 +305,21 @@ async def test_comment_size_and_mention_counts_are_capped(session: AsyncSession,
 
     w = await build_world(session)
     task_id = await seed_task(session, w)
-    assert len(parse_mentions(" ".join(f"@user{i}" for i in range(MAX_MENTIONS + 20)))) == MAX_MENTIONS
+    assert len(parse_mentions(" ".join(f"@user{i}" for i in range(MAX_MENTIONS + 20)))) == MAX_MENTIONS + 1
+
+    with pytest.raises(AppError) as e:  # 51 distinct handles: rejected, never silently truncated
+        await create_comment(
+            session, actor_id=w.admin_id, target_type="TASK", target_id=task_id,
+            body=" ".join(f"@user{i}" for i in range(MAX_MENTIONS + 1)), clock=clock,
+        )  # fmt: skip
+    assert e.value.code == "COMMENT_TOO_LARGE"
+    with pytest.raises(AppError) as e:  # parsed + explicit together over the cap
+        await create_comment(
+            session, actor_id=w.admin_id, target_type="TASK", target_id=task_id,
+            body=" ".join(f"@user{i}" for i in range(MAX_MENTIONS - 1)),
+            mentioned_user_ids=[uuid.uuid4(), uuid.uuid4()], clock=clock,
+        )  # fmt: skip
+    assert e.value.code == "COMMENT_TOO_LARGE"
 
     with pytest.raises(AppError) as e:
         await create_comment(

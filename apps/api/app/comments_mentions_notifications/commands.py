@@ -273,6 +273,9 @@ async def create_comment(
             raise ParentCommentMismatchError()
 
     handles = parse_mentions(clean)
+    explicit = list(dict.fromkeys(mentioned_user_ids or []))
+    if len(handles) + len(explicit) > MAX_MENTIONS:
+        raise CommentTooLargeError()
     resolved: dict[uuid.UUID, str] = {}
     unresolved: list[str] = []
     for handle in handles:
@@ -281,13 +284,11 @@ async def create_comment(
             unresolved.append(handle)
         else:
             resolved.setdefault(user_id, handle)
-    for user_id in list(dict.fromkeys(mentioned_user_ids or []))[:MAX_MENTIONS]:
+    for user_id in explicit:
         if await is_user_active(session, user_id):
             resolved.setdefault(user_id, str(user_id))
         else:
             unresolved.append(str(user_id))
-    if len(resolved) > MAX_MENTIONS:
-        raise CommentTooLargeError()
     resolved.pop(actor_id, None)  # mentioning yourself is not a notification
 
     comment = Comment(

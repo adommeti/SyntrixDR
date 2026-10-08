@@ -5,8 +5,9 @@ against Users is the command's job. Accepted forms (BUILD-08.plan.md Risk B2):
     @ada.lovelace        a single ASCII token, matched as a display name without spaces
     @ada@example.com     an email address
 
-Handles are returned in order of first appearance, de-duplicated case-insensitively, at most
-`MAX_MENTIONS`; a comment body is capped at `MAX_COMMENT_CHARS` (request amplification guard)."""
+Handles are returned in order of first appearance, de-duplicated case-insensitively. Parsing stops
+one past `MAX_MENTIONS` so the command can reject an oversized comment instead of silently dropping
+mentions; a comment body is capped at `MAX_COMMENT_CHARS` (request amplification guard)."""
 
 from __future__ import annotations
 
@@ -29,6 +30,6 @@ def parse_mentions(body: str) -> list[str]:
         if key not in seen:
             seen.add(key)
             handles.append(handle)
-            if len(handles) == MAX_MENTIONS:
-                break
+            if len(handles) > MAX_MENTIONS:
+                break  # the caller rejects; never drop a mention silently
     return handles
