@@ -26,6 +26,9 @@ OWNED_TABLES = {
     "work_streams",
     "milestones",
     "milestone_tasks",
+    "alerts",
+    "notifications",
+    "alert_snoozes",
 }
 MODULES = [
     "app.blockers.models",
@@ -33,6 +36,7 @@ MODULES = [
     "app.tasks_dependencies.models",
     "app.work_streams.models",
     "app.milestones.models",
+    "app.comments_mentions_notifications.models",
 ]
 #: Each module alone, and each module first with the rest after it. Those are the orders where a
 #: missing registration or the tasks_dependencies <-> milestones circular import would break; every

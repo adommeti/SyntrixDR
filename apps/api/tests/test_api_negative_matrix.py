@@ -27,7 +27,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clock import FakeClock
 from app.work_streams.commands import create_work_stream
-from tests.factories import World, build_world, count, depend, headers, http, login, seed_milestone, seed_task
+from tests.factories import (
+    World,
+    build_world,
+    count,
+    depend,
+    headers,
+    http,
+    login,
+    seed_blocker,
+    seed_milestone,
+    seed_task,
+)
 
 pytestmark = [pytest.mark.api]
 
@@ -74,6 +85,32 @@ def task_in(status: str, **seed: Any) -> Setup:
         return {"task": await seed_task(session, w, status=status, **seed)}
 
     return setup
+
+
+def blocker_in(status: str) -> Setup:
+    """A BLOCKED Task whose seeded Blocker is replaced by one in `status`, routed to the other Team and
+    owned by the outsider (the resolver side), so the Executor on the Owning Team is the verifier."""
+
+    async def setup(session: AsyncSession, w: World, clock: FakeClock) -> Ids:
+        task_id = await seed_task(session, w, status="BLOCKED")
+        await session.execute(text("DELETE FROM blockers WHERE task_id = :t"), {"t": task_id})
+        blocker_id = await seed_blocker(
+            session, w, task_id, status=status, team_id=w.other_team_id, owner_id=w.outsider_id
+        )
+        return {"task": task_id, "blocker": blocker_id}
+
+    return setup
+
+
+def blocker_sql(statement: str) -> Mutate:
+    async def mutate(session: AsyncSession, w: World, ids: Ids, clock: FakeClock) -> None:
+        await session.execute(text(statement), {"b": ids["blocker"]})
+
+    return mutate
+
+
+def blocker_path(command: str) -> PathFn:
+    return lambda w, ids: f"/api/v1/blockers/{ids['blocker']}/{command}"
 
 
 def milestone_in(status: str) -> Setup:
@@ -354,6 +391,83 @@ SPECS: dict[str, Spec] = {
                 "INVALID_TRANSITION",
                 mutate=sql("UPDATE tasks SET status = 'COMPLETED' WHERE id = :t"),
                 body=lambda w, ids: {"assignee_user_id": str(w.teammate_id), "expected_version": 1},
+            ),
+        },
+    ),
+    "assign blocker": Spec(
+        "POST",
+        blocker_path("assign"),
+        lambda w, ids: {"team_id": str(w.other_team_id), "expected_version": 1},
+        blocker_in("OPEN"),
+        ok_actor="manager_id",
+        ok_status=200,
+        forbidden_actor="business_owner_id",
+        not_found=("stranger_id", Case(404, "BLOCKER_NOT_FOUND")),
+        malformed=MISSING_VERSION,
+        guard=Case(422, "BLOCKER_ROUTING_REQUIRED", body=body(expected_version=1)),
+        conflicts={
+            "stale version": stale(team_id="00000000-0000-0000-0000-000000000000"),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=blocker_sql("UPDATE blockers SET status = 'IN_PROGRESS' WHERE id = :b"),
+            ),
+        },
+    ),
+    "start blocker": Spec(
+        "POST",
+        blocker_path("start"),
+        body(expected_version=1),
+        blocker_in("ASSIGNED"),
+        ok_actor="outsider_id",  # the assigned resolver
+        ok_status=200,
+        forbidden_actor="executor_id",  # not the resolver, not on that queue
+        not_found=("stranger_id", Case(404, "BLOCKER_NOT_FOUND")),
+        malformed=MISSING_VERSION,
+        conflicts={
+            "stale version": stale(),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=blocker_sql("UPDATE blockers SET status = 'OPEN' WHERE id = :b"),
+            ),
+        },
+    ),
+    "resolve blocker": Spec(
+        "POST",
+        blocker_path("resolve"),
+        body(expected_version=1, resolution_note="fixed"),
+        blocker_in("IN_PROGRESS"),
+        ok_actor="outsider_id",
+        ok_status=200,
+        forbidden_actor="executor_id",
+        not_found=("stranger_id", Case(404, "BLOCKER_NOT_FOUND")),
+        malformed=MISSING_VERSION,
+        conflicts={
+            "stale version": stale(),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=blocker_sql("UPDATE blockers SET status = 'RESOLVED' WHERE id = :b"),
+            ),
+        },
+    ),
+    "verify blocker": Spec(
+        "POST",
+        blocker_path("verify"),
+        body(expected_version=1),
+        blocker_in("RESOLVED"),
+        ok_actor="executor_id",  # Owning Team verifies
+        ok_status=200,
+        forbidden_actor="outsider_id",  # the resolver's Team does not verify its own fix
+        not_found=("stranger_id", Case(404, "BLOCKER_NOT_FOUND")),
+        malformed=MISSING_VERSION,
+        conflicts={
+            "stale version": stale(),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=blocker_sql("UPDATE blockers SET status = 'CLOSED' WHERE id = :b"),
             ),
         },
     ),
@@ -653,7 +767,13 @@ def test_every_command_in_the_matrix_has_every_mandatory_category() -> None:
     for name, spec in SPECS.items():
         assert spec.ok_actor and spec.forbidden_actor and spec.not_found and spec.malformed, name
     # `confirm` has no guard beyond legality (its 409 row); creates have no version to go stale.
-    assert {n for n, s in SPECS.items() if s.guard is None} == {"remove dependency", "confirm milestone"}
+    assert {n for n, s in SPECS.items() if s.guard is None} == {
+        "remove dependency",
+        "confirm milestone",
+        "start blocker",
+        "resolve blocker",
+        "verify blocker",
+    }
     assert {n for n, s in SPECS.items() if not s.conflicts} == {
         "create task",
         "remove dependency",

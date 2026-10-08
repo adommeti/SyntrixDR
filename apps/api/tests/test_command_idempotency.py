@@ -12,6 +12,7 @@ from fastapi.routing import APIRoute
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.blockers.routes import router as blockers_router
 from app.core.clock import FakeClock
 from app.milestones.routes import router as milestones_router
 from app.resources_skills.routes import router as resources_skills_router
@@ -21,7 +22,7 @@ from tests.factories import build_world, http, login
 
 pytestmark = [pytest.mark.api]
 
-_ROUTERS = (tasks_router, work_streams_router, milestones_router, resources_skills_router)
+_ROUTERS = (tasks_router, work_streams_router, milestones_router, resources_skills_router, blockers_router)
 _T = str(uuid.uuid4())
 
 #: (method, path template) -> a body that passes schema validation, so the only thing missing is the key.
@@ -44,6 +45,10 @@ BODIES: dict[tuple[str, str], dict[str, Any] | None] = {
     ("POST", "/api/v1/milestones/{milestone_id}/confirm"): {"expected_version": 1},
     ("POST", "/api/v1/tasks/{task_id}/assign"): {"assignee_user_id": _T, "expected_version": 1},
     ("POST", "/api/v1/tasks/{task_id}/volunteer"): {"expected_version": 1},
+    ("POST", "/api/v1/blockers/{blocker_id}/assign"): {"expected_version": 1, "assignee_user_id": _T},
+    ("POST", "/api/v1/blockers/{blocker_id}/start"): {"expected_version": 1},
+    ("POST", "/api/v1/blockers/{blocker_id}/resolve"): {"expected_version": 1},
+    ("POST", "/api/v1/blockers/{blocker_id}/verify"): {"expected_version": 1},
 }
 
 
@@ -68,7 +73,11 @@ async def test_command_without_an_idempotency_key_is_400(
     w = await build_world(session)
     sid, csrf = await login(session, redis_client, clock, w.admin_id)
     url = path.format(
-        task_id=uuid.uuid4(), dependency_id=uuid.uuid4(), milestone_id=uuid.uuid4(), event_id=w.event_id
+        task_id=uuid.uuid4(),
+        dependency_id=uuid.uuid4(),
+        milestone_id=uuid.uuid4(),
+        blocker_id=uuid.uuid4(),
+        event_id=w.event_id,
     )
 
     async with http(session, redis_client, clock) as c:

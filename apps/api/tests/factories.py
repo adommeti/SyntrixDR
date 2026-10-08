@@ -20,6 +20,7 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.blockers.routes import router as blockers_router
 from app.core.clock import Clock, FakeClock
 from app.core.database import get_request_session
 from app.core.errors import AppError, app_error_handler
@@ -381,6 +382,7 @@ def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> F
     app.include_router(work_streams_router)
     app.include_router(milestones_router)
     app.include_router(resources_skills_router)
+    app.include_router(blockers_router)
 
     async def _session_override():  # noqa: ANN202
         yield session
@@ -529,3 +531,56 @@ async def seed_dr_application(session: AsyncSession, w: World, *, application_id
     )
     await session.flush()
     return dr_application_id
+
+
+async def seed_blocker(
+    session: AsyncSession,
+    w: World,
+    task_id: uuid.UUID,
+    *,
+    status: str = "OPEN",
+    team_id: uuid.UUID | None = None,
+    owner_id: uuid.UUID | None = None,
+    blocked_at: datetime | None = None,
+    created_by: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """Raw SQL, so tests can place a Blocker in any state; `TaskTransitionService.block` is the
+    command. Timestamps consistent with the state are the caller's business."""
+    blocker_id = uuid.uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO blockers (id, task_id, reason, status, blocker_team_id, blocker_owner_user_id, "
+            "created_by_user_id, blocked_at, created_at, updated_at) "
+            "VALUES (:id, :tid, 'seeded', CAST(:st AS blocker_status), :team, :owner, :uid, "
+            "COALESCE(:at, now()), now(), now())"
+        ),
+        {
+            "id": blocker_id,
+            "tid": task_id,
+            "st": status,
+            "team": team_id,
+            "owner": owner_id,
+            "uid": created_by or w.executor_id,
+            "at": blocked_at,
+        },
+    )
+    return blocker_id
+
+
+async def blocker_row(session: AsyncSession, blocker_id: uuid.UUID) -> Any:
+    return (
+        await session.execute(
+            text(
+                "SELECT status, version, blocker_team_id, blocker_owner_user_id, claimed_at, resolved_at, "
+                "verified_at, closed_at, resolution_note FROM blockers WHERE id = :id"
+            ),
+            {"id": blocker_id},
+        )
+    ).one()
+
+
+async def blocker_ids_of(session: AsyncSession, task_id: uuid.UUID) -> list[uuid.UUID]:
+    rows = await session.execute(
+        text("SELECT id FROM blockers WHERE task_id = :t ORDER BY created_at, id"), {"t": task_id}
+    )
+    return [r.id for r in rows]

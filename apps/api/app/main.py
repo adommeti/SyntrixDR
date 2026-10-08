@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.applications_catalog.routes import router as applications_catalog_router
+from app.blockers.routes import router as blockers_router
 from app.core.config import Settings, get_settings
 from app.core.database import make_engine, make_session_factory
 from app.core.errors import AppError, app_error_handler, unhandled_error_handler
@@ -83,6 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(work_streams_router)
     app.include_router(milestones_router)
     app.include_router(resources_skills_router)
+    app.include_router(blockers_router)
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
