@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.catalogs import OutboxEventType
 from app.core.clock import Clock
 from app.core.database import Base
 from app.core.target_types import target_type_enum
@@ -56,7 +57,10 @@ async def write_outbox(
     clock: Clock,
     dr_event_id: uuid.UUID | None = None,
 ) -> OutboxEvent:
-    """Writes an outbox row in the caller's active transaction (same commit as the domain change)."""
+    """Writes an outbox row in the caller's active transaction (same commit as the domain change).
+    `event_type` must be a member of the D-234 union; a free-text type is a programming error."""
+    if event_type not in OutboxEventType.__members__.values():
+        raise ValueError(f"{event_type!r} is not in the D-234 outbox/WebSocket event union")
     event = OutboxEvent(
         aggregate_type=aggregate_type,
         aggregate_id=aggregate_id,
