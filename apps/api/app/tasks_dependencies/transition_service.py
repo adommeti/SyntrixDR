@@ -348,6 +348,44 @@ class TaskTransitionService:
         )
 
     @staticmethod
+    async def resume_after_last_blocker(
+        session: AsyncSession,
+        *,
+        task_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        blocker_id: uuid.UUID,
+        clock: Clock,
+    ) -> Task:
+        """BLOCKED -> IN_PROGRESS as the side effect of `blockers/{id}/verify` closing the Task's last
+        active Blocker (D-252, I-1): same transaction, no version check (nothing the caller sent names
+        the Task's version), authorization already done by the Blocker command. A Task that is not
+        BLOCKED, or still has an active Blocker, is left alone. Never advances past IN_PROGRESS."""
+        task = (
+            await session.execute(
+                select(Task)
+                .where(Task.id == task_id, Task.deleted_at.is_(None))
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if task is None:
+            raise TaskNotFoundError()
+        if task.status != "BLOCKED" or await count_active_blockers(session, task.id):
+            return task
+
+        before = _snapshot(task)
+        task.status = "IN_PROGRESS"
+        return await _finish(
+            session,
+            task=task,
+            actor_id=actor_id,
+            before=before,
+            action="TASK_RESUMED",
+            clock=clock,
+            extra={"blocker_id": str(blocker_id), "automatic": True},
+        )
+
+    @staticmethod
     async def submit_validation(
         session: AsyncSession,
         *,

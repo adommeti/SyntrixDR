@@ -40,3 +40,16 @@ async def count_active_blockers_by_task(
         .group_by(Blocker.task_id)
     )
     return {task_id: n for task_id, n in rows}
+
+
+async def lock_blocker(session: AsyncSession, blocker_id: uuid.UUID) -> Blocker | None:
+    """The live Blocker row under `FOR UPDATE`; `populate_existing` so an identity-map copy can't hide
+    the locked row's version (ADR-036)."""
+    return (
+        await session.execute(
+            select(Blocker)
+            .where(Blocker.id == blocker_id, Blocker.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()

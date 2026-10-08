@@ -502,3 +502,22 @@ async def apply_assignment(
         dr_event_id=task.dr_event_id,
     )
     return task
+
+
+async def resume_task_after_last_blocker(
+    session: AsyncSession,
+    *,
+    task_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    blocker_id: uuid.UUID,
+    clock: Clock,
+) -> Task:
+    """The automatic BLOCKED -> IN_PROGRESS when `blockers/{id}/verify` closes the Task's last active
+    Blocker (D-252, I-1) -- an already-authorized side effect inside the verify transaction. The
+    status write lives in the transition service; this is the cross-module entry (layering rule).
+    The import is late because `transition_service` imports this module for `TaskNotFoundError`."""
+    from app.tasks_dependencies.transition_service import TaskTransitionService
+
+    return await TaskTransitionService.resume_after_last_blocker(
+        session, task_id=task_id, actor_id=actor_id, blocker_id=blocker_id, clock=clock
+    )
