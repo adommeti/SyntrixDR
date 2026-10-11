@@ -675,3 +675,11 @@ async def open_task_counts(
     if assignee_ids is not None:
         stmt = stmt.where(Task.current_assignee_user_id.in_(assignee_ids))
     return [(a, t, s, int(n)) for a, t, s, n in await session.execute(stmt)]
+
+
+async def get_task(session: AsyncSession, task_id: uuid.UUID) -> Task | None:
+    """The live Task row without a visibility check -- for callers that resolve a Task to its Event
+    before deciding visibility themselves (comments, Issue links)."""
+    return (
+        await session.execute(select(Task).where(Task.id == task_id, Task.deleted_at.is_(None)))
+    ).scalar_one_or_none()

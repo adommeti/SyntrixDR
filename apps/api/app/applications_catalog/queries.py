@@ -99,3 +99,15 @@ async def is_system_application_owner(
         )
     )
     return result.first() is not None
+
+
+async def holds_any_owner_slot(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    """Any live `application_owners` slot of any type, on any Application -- the practical identity
+    behind RBAC_MATRIX.md's "Business Owner" / "App/System Owner" columns for capabilities every column
+    grants (comment/@mention). Slot ownership is a table, not a role grant."""
+    result = await session.execute(
+        select(ApplicationOwner.id)
+        .where(ApplicationOwner.user_id == user_id, ApplicationOwner.deleted_at.is_(None))
+        .limit(1)
+    )
+    return result.first() is not None

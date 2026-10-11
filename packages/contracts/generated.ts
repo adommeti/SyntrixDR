@@ -61,6 +61,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/alerts/{alert_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Acknowledge Alert
+         * @description API_CONTRACT.md:218 -- shared ack, reason where a breach requires it.
+         */
+        post: operations["post_acknowledge_alert_api_v1_alerts__alert_id__acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alerts/{alert_id}/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Snooze Alert
+         * @description API_CONTRACT.md:219 -- personal snooze.
+         */
+        post: operations["post_snooze_alert_api_v1_alerts__alert_id__snooze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/applications": {
         parameters: {
             query?: never;
@@ -550,6 +590,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dr-events/{event_id}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Issues Route */
+        get: operations["list_issues_route_api_v1_dr_events__event_id__issues_get"];
+        put?: never;
+        /** Post Create Issue */
+        post: operations["post_create_issue_api_v1_dr_events__event_id__issues_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dr-events/{event_id}/mark-failed-over": {
         parameters: {
             query?: never;
@@ -717,6 +775,57 @@ export interface paths {
         put?: never;
         /** Post Accept Import */
         post: operations["post_accept_import_api_v1_imports__import_job_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{issue_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Dismiss Issue */
+        post: operations["post_dismiss_issue_api_v1_issues__issue_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{issue_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Resolve Issue */
+        post: operations["post_resolve_issue_api_v1_issues__issue_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{issue_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Review Issue */
+        post: operations["post_review_issue_api_v1_issues__issue_id__review_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1062,6 +1171,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/{target_type}/{target_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Comments Route */
+        get: operations["list_comments_route_api_v1__target_type___target_id__comments_get"];
+        put?: never;
+        /** Post Create Comment */
+        post: operations["post_create_comment_api_v1__target_type___target_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1070,6 +1197,11 @@ export interface components {
         AcceptImportRequest: {
             /** Mapping */
             mapping: components["schemas"]["ColumnMappingRequest"][];
+        };
+        /** AcknowledgeAlertRequest */
+        AcknowledgeAlertRequest: {
+            /** Reason */
+            reason?: string | null;
         };
         /** ActivateEventRequest */
         ActivateEventRequest: {
@@ -1276,6 +1408,16 @@ export interface components {
             /** Expected Version */
             expected_version: number;
         };
+        /**
+         * CloseIssueRequest
+         * @description `resolve` / `dismiss` -- the note is required by the service (422 `RESOLUTION_NOTE_REQUIRED`).
+         */
+        CloseIssueRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Note */
+            note?: string | null;
+        };
         /** ClosureExceptionRequest */
         ClosureExceptionRequest: {
             /** Reason */
@@ -1296,6 +1438,42 @@ export interface components {
             source_header: string;
             /** Target Field */
             target_field: string | null;
+        };
+        /** CommentListResponse */
+        CommentListResponse: {
+            /** Comments */
+            comments: components["schemas"]["CommentResponse"][];
+        };
+        /** CommentResponse */
+        CommentResponse: {
+            /**
+             * Author User Id
+             * Format: uuid
+             */
+            author_user_id: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mentioned User Ids */
+            mentioned_user_ids: string[];
+            /** Parent Comment Id */
+            parent_comment_id: string | null;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
         };
         /** ConfirmMilestoneRequest */
         ConfirmMilestoneRequest: {
@@ -1318,6 +1496,22 @@ export interface components {
              */
             tier_id: string;
         };
+        /**
+         * CreateCommentRequest
+         * @description `POST /{target_type}/{target_id}/comments` (API_CONTRACT.md:217). Mentions: `@"Display Name"`,
+         *     `@handle`, `@email` in the body, and/or explicit `mentioned_user_ids`.
+         */
+        CreateCommentRequest: {
+            /** Body */
+            body: string;
+            /**
+             * Mentioned User Ids
+             * @default []
+             */
+            mentioned_user_ids: string[];
+            /** Parent Comment Id */
+            parent_comment_id?: string | null;
+        };
         /** CreateDrEventRequest */
         CreateDrEventRequest: {
             /**
@@ -1337,6 +1531,32 @@ export interface components {
             plan_id?: string | null;
             /** Plan Version Id */
             plan_version_id?: string | null;
+        };
+        /**
+         * CreateIssueRequest
+         * @description `POST /dr-events/{id}/issues` (API_CONTRACT.md:185).
+         */
+        CreateIssueRequest: {
+            /** Description */
+            description: string;
+            /** Dr Application Id */
+            dr_application_id?: string | null;
+            /**
+             * Item Type
+             * @default ISSUE
+             * @enum {string}
+             */
+            item_type: "ISSUE" | "FINDING" | "RISK" | "DEVIATION" | "LESSON";
+            /** Owner User Id */
+            owner_user_id?: string | null;
+            /** Priority */
+            priority?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Title */
+            title: string;
+            /** Work Stream Id */
+            work_stream_id?: string | null;
         };
         /** CreateLocalUserRequest */
         CreateLocalUserRequest: {
@@ -1835,6 +2055,69 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** IssueListResponse */
+        IssueListResponse: {
+            /** Issues */
+            issues: components["schemas"]["IssueResponse"][];
+        };
+        /** IssueResponse */
+        IssueResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By User Id
+             * Format: uuid
+             */
+            created_by_user_id: string;
+            /** Description */
+            description: string;
+            /** Dr Application Id */
+            dr_application_id: string | null;
+            /**
+             * Dr Event Id
+             * Format: uuid
+             */
+            dr_event_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "ISSUE" | "FINDING" | "RISK" | "DEVIATION" | "LESSON";
+            /** Owner User Id */
+            owner_user_id: string | null;
+            /** Priority */
+            priority: string | null;
+            /** Resolution Note */
+            resolution_note: string | null;
+            /** Resolved At */
+            resolved_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "OPEN" | "IN_REVIEW" | "RESOLVED" | "DISMISSED";
+            /** Task Id */
+            task_id: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+            /** Work Stream Id */
+            work_stream_id: string | null;
+        };
         /** LocalLoginRequest */
         LocalLoginRequest: {
             /** Email */
@@ -2178,6 +2461,11 @@ export interface components {
             /** Override Reason */
             override_reason?: string | null;
         };
+        /** ReviewIssueRequest */
+        ReviewIssueRequest: {
+            /** Expected Version */
+            expected_version: number;
+        };
         /** SetApplicationOwnerItem */
         SetApplicationOwnerItem: {
             /** Owner Order */
@@ -2214,6 +2502,14 @@ export interface components {
             };
             /** Source Id */
             source_id?: string | null;
+        };
+        /** SnoozeAlertRequest */
+        SnoozeAlertRequest: {
+            /**
+             * Snoozed Until
+             * Format: date-time
+             */
+            snoozed_until: string;
         };
         /** StartBlockerRequest */
         StartBlockerRequest: {
@@ -2780,6 +3076,76 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateTiersRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_acknowledge_alert_api_v1_alerts__alert_id__acknowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcknowledgeAlertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_snooze_alert_api_v1_alerts__alert_id__snooze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnoozeAlertRequest"];
             };
         };
         responses: {
@@ -3680,6 +4046,75 @@ export interface operations {
             };
         };
     };
+    list_issues_route_api_v1_dr_events__event_id__issues_get: {
+        parameters: {
+            query?: {
+                status?: ("OPEN" | "IN_REVIEW" | "RESOLVED" | "DISMISSED") | null;
+                task_id?: string | null;
+            };
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_issue_api_v1_dr_events__event_id__issues_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_mark_failed_over_api_v1_dr_events__event_id__mark_failed_over_post: {
         parameters: {
             query?: never;
@@ -4079,6 +4514,111 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AcceptImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_dismiss_issue_api_v1_issues__issue_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_resolve_issue_api_v1_issues__issue_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_review_issue_api_v1_issues__issue_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewIssueRequest"];
             };
         };
         responses: {
@@ -4755,6 +5295,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comments_route_api_v1__target_type___target_id__comments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                target_type: "TASK" | "DR_APPLICATION" | "WORK_STREAM" | "BLOCKER" | "ISSUE_FINDING" | "DR_EVENT" | "MILESTONE";
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_create_comment_api_v1__target_type___target_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                target_type: "TASK" | "DR_APPLICATION" | "WORK_STREAM" | "BLOCKER" | "ISSUE_FINDING" | "DR_EVENT" | "MILESTONE";
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentResponse"];
                 };
             };
             /** @description Validation Error */

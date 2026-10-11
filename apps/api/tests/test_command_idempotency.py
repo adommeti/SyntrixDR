@@ -13,7 +13,9 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockers.routes import router as blockers_router
+from app.comments_mentions_notifications.routes import router as collaboration_router
 from app.core.clock import FakeClock
+from app.issues_findings.routes import router as issues_router
 from app.milestones.routes import router as milestones_router
 from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.routes import router as tasks_router
@@ -22,7 +24,15 @@ from tests.factories import build_world, http, login
 
 pytestmark = [pytest.mark.api]
 
-_ROUTERS = (tasks_router, work_streams_router, milestones_router, resources_skills_router, blockers_router)
+_ROUTERS = (
+    tasks_router,
+    work_streams_router,
+    milestones_router,
+    resources_skills_router,
+    blockers_router,
+    issues_router,
+    collaboration_router,
+)
 _T = str(uuid.uuid4())
 
 #: (method, path template) -> a body that passes schema validation, so the only thing missing is the key.
@@ -49,6 +59,13 @@ BODIES: dict[tuple[str, str], dict[str, Any] | None] = {
     ("POST", "/api/v1/blockers/{blocker_id}/start"): {"expected_version": 1},
     ("POST", "/api/v1/blockers/{blocker_id}/resolve"): {"expected_version": 1},
     ("POST", "/api/v1/blockers/{blocker_id}/verify"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/issues"): {"title": "x", "description": "y"},
+    ("POST", "/api/v1/issues/{issue_id}/review"): {"expected_version": 1},
+    ("POST", "/api/v1/issues/{issue_id}/resolve"): {"expected_version": 1, "note": "n"},
+    ("POST", "/api/v1/issues/{issue_id}/dismiss"): {"expected_version": 1, "note": "n"},
+    ("POST", "/api/v1/{target_type}/{target_id}/comments"): {"body": "x"},
+    ("POST", "/api/v1/alerts/{alert_id}/acknowledge"): {},
+    ("POST", "/api/v1/alerts/{alert_id}/snooze"): {"snoozed_until": "2030-01-01T00:00:00Z"},
 }
 
 
@@ -77,6 +94,10 @@ async def test_command_without_an_idempotency_key_is_400(
         dependency_id=uuid.uuid4(),
         milestone_id=uuid.uuid4(),
         blocker_id=uuid.uuid4(),
+        issue_id=uuid.uuid4(),
+        alert_id=uuid.uuid4(),
+        target_type="TASK",
+        target_id=uuid.uuid4(),
         event_id=w.event_id,
     )
 

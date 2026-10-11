@@ -84,3 +84,9 @@ async def list_blockers(
     if task_id is not None:
         query = query.where(Blocker.task_id == task_id)
     return list((await session.execute(query)).scalars().all())
+
+
+async def get_blocker(session: AsyncSession, blocker_id: uuid.UUID) -> Blocker | None:
+    return (
+        await session.execute(select(Blocker).where(Blocker.id == blocker_id, Blocker.deleted_at.is_(None)))
+    ).scalar_one_or_none()

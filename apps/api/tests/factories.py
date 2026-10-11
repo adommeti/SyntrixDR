@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockers.routes import router as blockers_router
+from app.comments_mentions_notifications.routes import router as collaboration_router
 from app.core.clock import Clock, FakeClock
 from app.core.database import get_request_session
 from app.core.errors import AppError, app_error_handler
@@ -29,6 +30,7 @@ from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.dependencies import get_clock, get_session_store
 from app.identity_auth.models import SessionRecord
 from app.identity_auth.session_store import RedisSessionStore
+from app.issues_findings.routes import router as issues_findings_router
 from app.milestones.routes import router as milestones_router
 from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.commands import create_draft_task
@@ -383,6 +385,8 @@ def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> F
     app.include_router(milestones_router)
     app.include_router(resources_skills_router)
     app.include_router(blockers_router)
+    app.include_router(issues_findings_router)
+    app.include_router(collaboration_router)
 
     async def _session_override():  # noqa: ANN202
         yield session
@@ -584,3 +588,89 @@ async def blocker_ids_of(session: AsyncSession, task_id: uuid.UUID) -> list[uuid
         text("SELECT id FROM blockers WHERE task_id = :t ORDER BY created_at, id"), {"t": task_id}
     )
     return [r.id for r in rows]
+
+
+async def seed_issue(
+    session: AsyncSession,
+    w: World,
+    *,
+    status: str = "OPEN",
+    task_id: uuid.UUID | None = None,
+    work_stream_id: uuid.UUID | None = None,
+    dr_application_id: uuid.UUID | None = None,
+    owner_id: uuid.UUID | None = None,
+    created_by: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """Raw SQL, so tests can place an Issue/Finding in any state; `create_issue` is the command."""
+    issue_id = uuid.uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO issue_findings (id, dr_event_id, dr_application_id, work_stream_id, task_id, "
+            "item_type, status, title, description, owner_user_id, created_by_user_id, "
+            "created_at, updated_at) "
+            "VALUES (:id, :eid, :app, :ws, :task, 'ISSUE', CAST(:st AS issue_finding_status), 'seeded', "
+            "'seeded', :owner, :uid, now(), now())"
+        ),
+        {
+            "id": issue_id,
+            "eid": w.event_id,
+            "app": dr_application_id,
+            "ws": work_stream_id,
+            "task": task_id,
+            "st": status,
+            "owner": owner_id,
+            "uid": created_by or w.executor_id,
+        },
+    )
+    return issue_id
+
+
+async def issue_row(session: AsyncSession, issue_id: uuid.UUID) -> Any:
+    return (
+        await session.execute(
+            text("SELECT status, version, resolution_note, resolved_at FROM issue_findings WHERE id = :id"),
+            {"id": issue_id},
+        )
+    ).one()
+
+
+async def seed_alert(
+    session: AsyncSession,
+    w: World,
+    *,
+    alert_type: str = "BLOCKER_ESCALATED",
+    severity: str = "HIGH",
+    event_scoped: bool = True,
+    target_type: str | None = "TASK",
+    target_id: uuid.UUID | None = None,
+    acknowledged: bool = False,
+) -> uuid.UUID:
+    alert_id = uuid.uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO alerts (id, dr_event_id, alert_type, severity, title, target_type, target_id, "
+            "acknowledged_at, created_at) VALUES (:id, :eid, :type, :sev, 'seeded', "
+            "CAST(:tt AS target_type), :tid, CASE WHEN :ack THEN now() END, now())"
+        ),
+        {
+            "id": alert_id,
+            "eid": w.event_id if event_scoped else None,
+            "type": alert_type,
+            "sev": severity,
+            "tt": target_type,
+            "tid": target_id or uuid.uuid4(),
+            "ack": acknowledged,
+        },
+    )
+    return alert_id
+
+
+async def notifications_of(session: AsyncSession, user_id: uuid.UUID) -> list[Any]:
+    rows = await session.execute(
+        text(
+            "SELECT notification_type, severity, target_type, target_id, dr_event_id FROM notifications "
+            "WHERE user_id = :u ORDER BY created_at"
+        ),
+        {"u": user_id},
+    )
+    return list(rows)

@@ -10,7 +10,13 @@ celery_app = Celery(
     "drcc",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.jobs.heartbeat", "app.plans_import.jobs", "app.milestones.jobs", "app.blockers.jobs"],
+    include=[
+        "app.jobs.heartbeat",
+        "app.plans_import.jobs",
+        "app.milestones.jobs",
+        "app.blockers.jobs",
+        "app.comments_mentions_notifications.jobs",
+    ],
 )
 
 celery_app.conf.update(

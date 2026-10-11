@@ -20,7 +20,17 @@ from app.core.errors import AppError
 from app.dr_events.participants import enrol_participant
 from app.resources_skills.assignment_service import AssignmentService
 from app.tasks_dependencies.transition_service import TaskTransitionService
-from tests.factories import World, build_world, grant_role, headers, http, login, make_user, seed_task
+from tests.factories import (
+    World,
+    build_world,
+    grant_role,
+    headers,
+    http,
+    login,
+    make_user,
+    notifications_of,
+    seed_task,
+)
 
 pytestmark = [pytest.mark.auth]
 
@@ -245,6 +255,15 @@ async def test_assignment_audits_emits_and_enrols(session: AsyncSession, clock: 
         .all()
     )
     assert list(enrolled) == ["TASK_ASSIGNEE"]  # D-222
+    # BUILD-08: the affected users (previous and new assignee, not the actor) are notified in-app.
+    for user_id in (w.executor_id, newcomer):
+        [note] = await notifications_of(session, user_id)
+        assert (note.notification_type, note.severity, note.target_id) == (
+            "ASSIGNMENT_CHANGED",
+            "MEDIUM",
+            task_id,
+        )
+    assert await notifications_of(session, w.coordinator_id) == []
 
 
 # --------------------------------------------------------------------------------------------
@@ -284,6 +303,11 @@ async def test_manager_precedence_accepts_a_stale_own_team_assignment_after_a_co
         str(w.teammate_id),
         str(w.roleless_member_id),
     }
+    # D-214 "affected users are notified": the superseded actor, the displaced and the new assignee.
+    for user_id in (getattr(w, intervening), w.teammate_id, w.roleless_member_id):
+        notes = await notifications_of(session, user_id)
+        assert [n.notification_type for n in notes][-1] == "ASSIGNMENT_CHANGED"
+        assert notes[-1].severity == "HIGH"
 
 
 @pytest.mark.parametrize("intervening", ["coordinator_id", "admin_id"])

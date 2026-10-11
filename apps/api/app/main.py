@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.applications_catalog.routes import router as applications_catalog_router
 from app.blockers.routes import router as blockers_router
+from app.comments_mentions_notifications.routes import router as collaboration_router
 from app.core.config import Settings, get_settings
 from app.core.database import make_engine, make_session_factory
 from app.core.errors import AppError, app_error_handler, unhandled_error_handler
@@ -20,6 +21,7 @@ from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.oidc import register_entra_oauth
 from app.identity_auth.routes import router as identity_auth_router
 from app.identity_auth.session_store import RedisSessionStore
+from app.issues_findings.routes import router as issues_findings_router
 from app.milestones.routes import router as milestones_router
 from app.plans_import.routes import router as plans_import_router
 from app.policies_admin.routes import router as policies_admin_router
@@ -85,6 +87,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(milestones_router)
     app.include_router(resources_skills_router)
     app.include_router(blockers_router)
+    app.include_router(issues_findings_router)
+    app.include_router(collaboration_router)
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:

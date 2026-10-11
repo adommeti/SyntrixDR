@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.comments_mentions_notifications.catalog import NotificationType, Severity
+from app.comments_mentions_notifications.commands import notify_user
 from app.core.audit import write_audit
 from app.core.clock import Clock, SystemClock
 from app.core.errors import AppError, ConcurrencyConflictError
@@ -501,6 +503,26 @@ async def apply_assignment(
         clock=clock,
         dr_event_id=task.dr_event_id,
     )
+    # D-214 "affected users are notified" / D-222: every affected user except the actor gets an
+    # in-app notification in this same transaction (BUILD-07.plan.md Risk B1, closed in BUILD-08).
+    conflict = metadata.get("conflict_resolution")
+    title = f"Task reassigned to you under {conflict}" if conflict else "Task assignment changed"
+    for user_id in dict.fromkeys(affected_user_ids):
+        if user_id == actor_id:
+            continue
+        await notify_user(
+            session,
+            user_id=user_id,
+            dr_event_id=task.dr_event_id,
+            alert=None,
+            notification_type=NotificationType.ASSIGNMENT_CHANGED,
+            severity=Severity.HIGH if conflict else Severity.MEDIUM,
+            title=title if user_id == assignee_user_id else "Task assignment changed",
+            body=task.title,
+            target_type="TASK",
+            target_id=task.id,
+            clock=clock,
+        )
     return task
 
 

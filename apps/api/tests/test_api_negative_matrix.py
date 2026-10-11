@@ -35,7 +35,9 @@ from tests.factories import (
     headers,
     http,
     login,
+    seed_alert,
     seed_blocker,
+    seed_issue,
     seed_milestone,
     seed_task,
 )
@@ -111,6 +113,38 @@ def blocker_sql(statement: str) -> Mutate:
 
 def blocker_path(command: str) -> PathFn:
     return lambda w, ids: f"/api/v1/blockers/{ids['blocker']}/{command}"
+
+
+def issue_in(status: str) -> Setup:
+    async def setup(session: AsyncSession, w: World, clock: FakeClock) -> Ids:
+        return {"issue": await seed_issue(session, w, status=status, created_by=w.executor_id)}
+
+    return setup
+
+
+def issue_sql(statement: str) -> Mutate:
+    async def mutate(session: AsyncSession, w: World, ids: Ids, clock: FakeClock) -> None:
+        await session.execute(text(statement), {"i": ids["issue"]})
+
+    return mutate
+
+
+def issue_path(command: str) -> PathFn:
+    return lambda w, ids: f"/api/v1/issues/{ids['issue']}/{command}"
+
+
+def alert_in(alert_type: str) -> Setup:
+    async def setup(session: AsyncSession, w: World, clock: FakeClock) -> Ids:
+        return {"alert": await seed_alert(session, w, alert_type=alert_type)}
+
+    return setup
+
+
+def alert_sql(statement: str) -> Mutate:
+    async def mutate(session: AsyncSession, w: World, ids: Ids, clock: FakeClock) -> None:
+        await session.execute(text(statement), {"a": ids["alert"]})
+
+    return mutate
 
 
 def milestone_in(status: str) -> Setup:
@@ -471,6 +505,124 @@ SPECS: dict[str, Spec] = {
             ),
         },
     ),
+    "create issue": Spec(
+        "POST",
+        lambda w, ids: f"/api/v1/dr-events/{w.event_id}/issues",
+        lambda w, ids: {
+            "title": "Stale snapshot",
+            "description": "d",
+            "item_type": "RISK",
+            "task_id": str(ids["task"]),
+        },
+        task_in("NOT_STARTED"),
+        ok_actor="executor_id",
+        ok_status=201,
+        forbidden_actor="business_owner_id",
+        not_found=("stranger_id", Case(404, "DR_EVENT_NOT_FOUND")),
+        malformed=Case(422, "", body=body(title="x")),  # description missing
+        guard=Case(
+            422,
+            "CROSS_EVENT_REFERENCE",
+            body=lambda w, ids: {"title": "x", "description": "d", "work_stream_id": str(uuid.uuid4())},
+        ),
+    ),
+    "review issue": Spec(
+        "POST",
+        issue_path("review"),
+        body(expected_version=1),
+        issue_in("OPEN"),
+        ok_actor="coordinator_id",
+        ok_status=200,
+        forbidden_actor="roleless_member_id",
+        not_found=("stranger_id", Case(404, "ISSUE_NOT_FOUND")),
+        malformed=MISSING_VERSION,
+        conflicts={
+            "stale version": stale(),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=issue_sql("UPDATE issue_findings SET status = 'RESOLVED' WHERE id = :i"),
+            ),
+        },
+    ),
+    "resolve issue": Spec(
+        "POST",
+        issue_path("resolve"),
+        body(expected_version=1, note="fixed"),
+        issue_in("IN_REVIEW"),
+        ok_actor="coordinator_id",
+        ok_status=200,
+        forbidden_actor="roleless_member_id",
+        not_found=("stranger_id", Case(404, "ISSUE_NOT_FOUND")),
+        malformed=MISSING_VERSION,
+        guard=Case(422, "RESOLUTION_NOTE_REQUIRED", body=body(expected_version=1)),
+        conflicts={
+            "stale version": stale(note="fixed"),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=issue_sql("UPDATE issue_findings SET status = 'DISMISSED' WHERE id = :i"),
+                body=body(expected_version=1, note="fixed"),
+            ),
+        },
+    ),
+    "dismiss issue": Spec(
+        "POST",
+        issue_path("dismiss"),
+        body(expected_version=1, note="not applicable"),
+        issue_in("OPEN"),
+        ok_actor="coordinator_id",
+        ok_status=200,
+        forbidden_actor="roleless_member_id",
+        not_found=("stranger_id", Case(404, "ISSUE_NOT_FOUND")),
+        malformed=MISSING_VERSION,
+        guard=Case(422, "RESOLUTION_NOTE_REQUIRED", body=body(expected_version=1)),
+        conflicts={
+            "stale version": stale(note="n"),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=issue_sql("UPDATE issue_findings SET status = 'RESOLVED' WHERE id = :i"),
+                body=body(expected_version=1, note="n"),
+            ),
+        },
+    ),
+    "create comment": Spec(
+        "POST",
+        lambda w, ids: f"/api/v1/TASK/{ids['task']}/comments",
+        body(body="cross-Team note"),
+        task_in("NOT_STARTED"),
+        ok_actor="outsider_id",
+        ok_status=201,
+        forbidden_actor="roleless_member_id",
+        not_found=("stranger_id", Case(404, "COMMENT_TARGET_NOT_FOUND")),
+        malformed=Case(422, "", body=body()),
+        guard=Case(
+            422,
+            "PARENT_COMMENT_MISMATCH",
+            body=lambda w, ids: {"body": "x", "parent_comment_id": str(uuid.uuid4())},
+        ),
+    ),
+    "acknowledge alert": Spec(
+        "POST",
+        lambda w, ids: f"/api/v1/alerts/{ids['alert']}/acknowledge",
+        body(reason="late recovery accepted"),
+        alert_in("RTO_BREACH"),
+        ok_actor="coordinator_id",
+        ok_status=200,
+        forbidden_actor="executor_id",
+        not_found=("stranger_id", Case(404, "ALERT_NOT_FOUND")),
+        malformed=Case(422, "", body=body(bogus=1)),
+        guard=Case(422, "ACKNOWLEDGEMENT_REASON_REQUIRED", body=body(reason="")),
+        conflicts={
+            "already acknowledged": Case(
+                409,
+                "ALERT_ALREADY_ACKNOWLEDGED",
+                mutate=alert_sql("UPDATE alerts SET acknowledged_at = now() WHERE id = :a"),
+                body=body(reason="r"),
+            ),
+        },
+    ),
     "volunteer": Spec(
         "POST",
         task_path("volunteer"),
@@ -773,9 +925,12 @@ def test_every_command_in_the_matrix_has_every_mandatory_category() -> None:
         "start blocker",
         "resolve blocker",
         "verify blocker",
+        "review issue",
     }
     assert {n for n, s in SPECS.items() if not s.conflicts} == {
         "create task",
         "remove dependency",
         "create milestone",
+        "create issue",
+        "create comment",
     }

@@ -217,3 +217,16 @@ async def skill_names_of(session: AsyncSession, user_ids: list[uuid.UUID]) -> di
     for user_id, name in rows:
         by_user[user_id].append(name)
     return by_user
+
+
+async def find_active_user_by_email(session: AsyncSession, email: str) -> uuid.UUID | None:
+    """Case-insensitive match on `email` among active, non-deleted Users of any identity type
+    (@mention resolution). `ux_users_email_active` makes the match unique."""
+    result = await session.execute(
+        select(User.id).where(
+            func.lower(User.email) == email.lower(),
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none()
