@@ -382,3 +382,17 @@ async def test_a_stale_failback_submit_is_409(session: AsyncSession, clock: Fake
     with pytest.raises(AppError) as e:
         await _submit(session, clock, w, "admin_id", version=7)
     assert e.value.code == "CONCURRENCY_CONFLICT"
+
+
+async def test_the_event_detail_exposes_application_versions(session: AsyncSession, clock: FakeClock) -> None:
+    """Clients must be able to read `version` before sending `expected_version` (second-opinion review)."""
+    from app.dr_events.queries import list_dr_applications
+    from app.dr_events.schemas import DrApplicationResponse
+
+    w = await build_world(session)
+    await _app_in(session, w, RECOVERING)
+    await _submit(session, clock, w, "system_owner_id")
+
+    [app] = await list_dr_applications(session, w.event_id)
+    body = DrApplicationResponse.model_validate(app).model_dump()
+    assert body["version"] == 2 and body["technical_validated_at"] is None

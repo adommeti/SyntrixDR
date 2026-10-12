@@ -1685,6 +1685,22 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "technical_validated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Technical Validated At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -1696,7 +1712,9 @@
           "rto_target_minutes",
           "rpo_target_minutes",
           "rpo_not_applicable",
-          "failback_required"
+          "failback_required",
+          "version",
+          "technical_validated_at"
         ],
         "title": "DrApplicationResponse",
         "type": "object"

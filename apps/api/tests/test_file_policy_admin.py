@@ -164,3 +164,28 @@ async def test_over_http_the_new_allowlist_and_cap_apply_to_uploads(
         )
         assert denied.status_code == 403
     await redis_client.delete(f"drcc:session:{sid}")
+
+
+async def test_update_reads_the_singleton_under_a_row_lock(session: AsyncSession, clock: FakeClock) -> None:
+    """A stale in-memory copy of the row must not be the base of an edit (second-opinion review)."""
+    from app.core.file_policy import get_file_policy
+
+    w = await build_world(session)
+    cached = await get_file_policy(session)
+    cached_max = cached.max_bytes
+    await session.execute(text("UPDATE file_policy SET max_bytes = :b"), {"b": 7 * 1024 * 1024})
+
+    policy = await update_file_policy(
+        session,
+        actor_id=w.admin_id,
+        max_mb=50,
+        allowed_extensions=["pdf"],
+        scanning_required=True,
+        clock=clock,
+    )
+
+    assert policy.max_bytes == 50 * 1024 * 1024
+    before = (
+        await session.execute(text("SELECT before_data FROM audit_events WHERE entity_type = 'FILE_POLICY'"))
+    ).scalar_one()
+    assert before["max_bytes"] == 7 * 1024 * 1024 != cached_max  # the refreshed row, not the cached copy

@@ -119,6 +119,10 @@ class DrApplicationResponse(BaseModel):
     rpo_target_minutes: int | None
     rpo_not_applicable: bool
     failback_required: bool
+    version: (
+        int  # clients need it for `expected_version` on the Application commands (D-214 stale-write rule)
+    )
+    technical_validated_at: datetime | None
 
 
 class DrEventDetailResponse(DrEventResponse):
@@ -150,5 +154,4 @@ class ValidateApplicationRequest(BaseModel):
 
 
 class DrApplicationCommandResponse(DrApplicationResponse):
-    version: int
-    technical_validated_at: datetime | None
+    """Same shape as the read model; kept as a named type for the command routes' OpenAPI entries."""

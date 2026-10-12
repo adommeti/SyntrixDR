@@ -1936,6 +1936,10 @@ export interface components {
             rto_target_minutes: number;
             /** Status */
             status: string;
+            /** Technical Validated At */
+            technical_validated_at: string | null;
+            /** Version */
+            version: number;
         };
         /**
          * DrEventDetailResponse

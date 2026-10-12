@@ -195,7 +195,7 @@ async def update_file_policy(
     if max_mb < 1:
         raise FilePolicyValueInvalidError("max_mb", "must be at least 1")
 
-    policy = await get_file_policy(session)
+    policy = await get_file_policy(session, for_update=True)  # serialise concurrent admin edits
     before = {
         "max_bytes": policy.max_bytes,
         "allowed_extensions": list(policy.allowed_extensions),
