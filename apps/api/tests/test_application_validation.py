@@ -103,6 +103,9 @@ async def test_submit_moves_recovering_to_technical_validation_and_opens_the_rec
         "PENDING", "phase:FAILOVER", w.system_owner_id,
     )  # fmt: skip
     assert await audit_actions(session, app_id) == ["DR_APPLICATION_SUBMITTED"]
+    assert await outbox_types(session, app_id) == [
+        "ApplicationHealthChanged"
+    ]  # audit + outbox, one transaction
 
 
 async def test_failback_submit_opens_the_record_without_moving_status(
@@ -242,7 +245,9 @@ async def test_validate_moves_the_application(
     )
     stamped = row.technical_validated_at is not None
     assert stamped is (approve and from_status == TV)  # the RTO clock stops on the failover validation only
-    assert await outbox_types(session, w.dr_application_id) == ["ApplicationHealthChanged"]
+    assert (
+        await outbox_types(session, w.dr_application_id) == ["ApplicationHealthChanged"] * 2
+    )  # submit, validate
     actions = await audit_actions(session, w.dr_application_id)
     assert ("DR_APPLICATION_VALIDATED" if approve else "DR_APPLICATION_VALIDATION_REJECTED") in actions
 

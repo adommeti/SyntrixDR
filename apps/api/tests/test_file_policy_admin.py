@@ -87,13 +87,14 @@ async def test_unknown_extensions_and_zero_size_are_rejected(session: AsyncSessi
     assert e.value.status_code == 422
 
 
-async def test_scanning_not_required_lets_unscanned_files_count(
+async def test_scanning_toggle_never_lets_unscanned_files_count(
     session: AsyncSession, clock: FakeClock
 ) -> None:
+    """D-245 allows no exception: `scanning_required=false` is an operational setting for the scanner,
+    not a relaxation of "INFECTED/unscanned evidence can't satisfy completion"."""
     w = await build_world(session)
     task_id = await seed_task(session, w, status="IN_PROGRESS")
     await seed_evidence(session, w, target_id=task_id, evidence_type="FILE", scan_status="PENDING")
-    assert await AcceptableEvidenceCounter().count_acceptable_for_task(session, task_id) == 0
 
     await update_file_policy(
         session,
@@ -104,7 +105,7 @@ async def test_scanning_not_required_lets_unscanned_files_count(
         clock=clock,
     )
 
-    assert await AcceptableEvidenceCounter().count_acceptable_for_task(session, task_id) == 1
+    assert await AcceptableEvidenceCounter().count_acceptable_for_task(session, task_id) == 0
 
 
 @pytest.mark.api

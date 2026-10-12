@@ -641,9 +641,9 @@ async def _finish_application(
     extra: Mapping[str, object] | None = None,
     emit_health: bool = False,
 ) -> DrApplication:
-    """Shared tail for Application commands: version, audit, and -- when the validation score moved --
-    an `ApplicationHealthChanged` outbox event (the D-234 union has no plain Application event;
-    BUILD-09.plan.md Risk B3). The status write stays in each caller."""
+    """Shared tail for Application commands: version, audit, and an `ApplicationHealthChanged` outbox
+    event (invariant 11; the D-234 union has no plain Application event and every command here moves
+    the validation score -- BUILD-09.plan.md Risk B3). The status write stays in each caller."""
     dr_application.version += 1
     dr_application.updated_at = clock.now()
     await session.flush()
@@ -747,6 +747,7 @@ class DrApplicationTransitionService:
             action="DR_APPLICATION_SUBMITTED",
             clock=clock,
             extra={"phase": phase, "validation_id": str(validation.id), "override": reason is not None},
+            emit_health=True,  # the pending technical validation moves the Application's validation score
         )
 
     @staticmethod

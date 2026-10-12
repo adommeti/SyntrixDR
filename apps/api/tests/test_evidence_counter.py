@@ -1,6 +1,6 @@
-"""The real `EvidenceCounter` (D-226, D-245): text/log/link always count; files only when CLEAN (or, with
-`file_policy.scanning_required=false`, when scanned-or-not but never INFECTED). End to end:
-EICAR evidence alone can never satisfy `submit-validation`."""
+"""The real `EvidenceCounter` (D-226, D-245): text/log/link always count; files only when CLEAN. Neither
+INFECTED nor unscanned ever counts, whatever `file_policy.scanning_required` says. End to end: EICAR evidence
+alone can never satisfy `submit-validation`."""
 
 from __future__ import annotations
 
@@ -29,9 +29,9 @@ pytestmark = [pytest.mark.domain, pytest.mark.files]
         ("FILE", "PENDING", True, True, 0),  # unscanned never counts while scanning is required
         ("FILE", "INFECTED", True, True, 0),
         ("FILE", "PENDING", False, True, 0),  # handshake without bytes
-        ("FILE", "PENDING", True, False, 1),  # scanning not required: unscanned counts
-        ("FILE", "INFECTED", True, False, 0),  # ... but INFECTED never does
-        ("FILE", "PENDING", False, False, 0),  # ... and bytes must have arrived
+        ("FILE", "PENDING", True, False, 0),  # the toggle never relaxes D-245: unscanned never counts
+        ("FILE", "INFECTED", True, False, 0),
+        ("FILE", "PENDING", False, False, 0),
     ],
 )
 async def test_acceptable_rules(

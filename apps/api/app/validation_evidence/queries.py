@@ -7,7 +7,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockers.queries import get_blocker
-from app.core.file_policy import get_file_policy
 from app.core.target_types import TARGET_TYPE_SUBSETS, TargetType
 from app.dr_events.queries import get_dr_application
 from app.issues_findings.queries import get_issue
@@ -159,12 +158,11 @@ async def list_evidence_for_target(
 
 class AcceptableEvidenceCounter:
     """The real `EvidenceCounter` (D-226, D-245): TEXT / LOG / EXTERNAL_LINK always count; a FILE or
-    SCREENSHOT counts only when CLEAN -- or, when `file_policy.scanning_required` is false, when it is
-    not INFECTED (a never-scanned file is then acceptable). INFECTED never counts, nor does a file
-    whose bytes never arrived (PENDING with no checksum)."""
+    SCREENSHOT counts only when its scan verdict is CLEAN. INFECTED or unscanned (PENDING, including a
+    handshake whose bytes never arrived) never counts -- D-245, SECURITY_REVIEW.md:108 and DATA_MODEL
+    "Evidence" allow no exception, so `file_policy.scanning_required` does not relax this."""
 
     async def count_acceptable_for_task(self, session: AsyncSession, task_id: uuid.UUID) -> int:
-        policy = await get_file_policy(session)
         base = (
             select(func.count())
             .select_from(EvidenceItem)
@@ -175,16 +173,9 @@ class AcceptableEvidenceCounter:
             )
         )
         non_file = base.where(EvidenceItem.evidence_type.in_(NON_FILE_EVIDENCE))
-        if policy.scanning_required:
-            files = base.where(
-                EvidenceItem.evidence_type.in_(FILE_EVIDENCE), EvidenceItem.malware_scan_status == "CLEAN"
-            )
-        else:
-            files = base.where(
-                EvidenceItem.evidence_type.in_(FILE_EVIDENCE),
-                EvidenceItem.checksum.is_not(None),  # bytes arrived
-                EvidenceItem.malware_scan_status != "INFECTED",
-            )
+        files = base.where(
+            EvidenceItem.evidence_type.in_(FILE_EVIDENCE), EvidenceItem.malware_scan_status == "CLEAN"
+        )
         return int((await session.execute(non_file)).scalar_one()) + int(
             (await session.execute(files)).scalar_one()
         )
