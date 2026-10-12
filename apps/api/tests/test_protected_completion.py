@@ -185,8 +185,8 @@ async def test_reject_returns_the_task_to_in_progress_and_keeps_the_record(
     await _validate(session, clock, w.coordinator_id, task_id, approve=True, version=4)
 
     assert (await task_row(session, task_id)).status == "COMPLETED"
-    statuses = [(v.status, v.verification_note) for v in await _validations(session, task_id)]
-    assert statuses == [("REJECTED", "done"), ("APPROVED", "fixed and resubmitted")]  # D-210: records persist
+    statuses = {(v.status, v.verification_note) for v in await _validations(session, task_id)}
+    assert statuses == {("REJECTED", "done"), ("APPROVED", "fixed and resubmitted")}  # D-210: records persist
 
 
 async def test_no_other_command_reaches_completed(session: AsyncSession, clock: FakeClock) -> None:

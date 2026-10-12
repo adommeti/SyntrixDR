@@ -21,6 +21,7 @@ from app.validation_evidence.scanning import MalwareScanStatus
 router = APIRouter(prefix="/api/v1/internal", tags=["internal"])
 
 SIGNATURE_HEADER = "X-Signature"
+MAX_BODY_BYTES = 64 * 1024  # an Event Grid envelope is a few KB
 
 
 class WebhookDisabledError(AppError):
@@ -29,6 +30,14 @@ class WebhookDisabledError(AppError):
 
     def __init__(self) -> None:
         super().__init__("The malware-result receiver is not configured (MALWARE_WEBHOOK_SECRET is empty).")
+
+
+class WebhookBodyTooLargeError(AppError):
+    code = "WEBHOOK_BODY_TOO_LARGE"
+    status_code = 413
+
+    def __init__(self) -> None:
+        super().__init__("Webhook body exceeds the accepted size.")
 
 
 class WebhookSignatureInvalidError(AppError):
@@ -64,9 +73,14 @@ async def post_malware_result(
     secret = get_settings().malware_webhook_secret
     if not secret:
         raise WebhookDisabledError()
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        raise WebhookBodyTooLargeError()
     body = await request.body()
+    if len(body) > MAX_BODY_BYTES:
+        raise WebhookBodyTooLargeError()
     provided = request.headers.get(SIGNATURE_HEADER, "")
-    if not provided or not hmac.compare_digest(provided, sign(secret, body)):
+    if not provided or not hmac.compare_digest(provided.encode("utf-8"), sign(secret, body).encode("utf-8")):
         raise WebhookSignatureInvalidError()
     result = MalwareResult.model_validate_json(body)
     item = await record_scan_result(

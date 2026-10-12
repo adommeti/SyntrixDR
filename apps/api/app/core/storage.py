@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.blob import BlobSasPermissions, ContentSettings, generate_blob_sas
@@ -94,7 +94,8 @@ class ObjectStore:
             permission=BlobSasPermissions(read=True),
             expiry=datetime.now(UTC) + timedelta(seconds=ttl_seconds),
         )
-        return f"{uri}?{token}"
+        base = uri.split("?", 1)[0]  # never append a second query string
+        return f"{base}?{token}"
 
 
 def _account(connection_string: str) -> tuple[str, str]:
@@ -108,8 +109,8 @@ def split_blob_url(uri: str) -> tuple[str, str]:
     account is a path segment, not part of the host) or `/<container>/<blob_name...>` for real
     Azure Blob (the account is in the hostname instead)."""
     parsed = urlparse(uri)
-    path_parts = parsed.path.lstrip("/").split("/")
+    path_parts = [unquote(part) for part in parsed.path.lstrip("/").split("/")]
     if parsed.hostname in {"localhost", "127.0.0.1"} and path_parts[0] == "devstoreaccount1":
         path_parts = path_parts[1:]
     container, *blob_parts = path_parts
-    return container, "/".join(blob_parts)
+    return container, "/".join(blob_parts)  # decoded: the SDK re-encodes names it is given

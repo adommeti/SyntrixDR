@@ -623,6 +623,12 @@ async def _load_visible_application(
     ).scalar_one_or_none()
     if dr_application is None or not await user_can_see_event(session, actor_id, dr_application.dr_event_id):
         raise DrApplicationNotFoundError()
+    event = await session.get(DrEvent, dr_application.dr_event_id)
+    if event is None or event.status in _TERMINAL_STATES:
+        # Cancelling or closing an Event does not cascade to its Applications; their commands stop here.
+        raise InvalidApplicationTransitionError(
+            "act on", dr_application.status, f"Its DR Event is {event.status if event else 'missing'}."
+        )
     return dr_application
 
 

@@ -75,7 +75,7 @@ def sniff_matches(content: bytes, extension: str) -> bool:
                 return False
             try:
                 json.loads(content.decode("utf-8"))
-            except ValueError:
+            except (ValueError, RecursionError):  # `[` * 100000 raises RecursionError
                 return False
             return True
         case "xlsx" | "docx":

@@ -85,3 +85,7 @@ def test_every_allowlisted_extension_has_a_canonical_mime() -> None:
         "zip",
         "json",
     }
+
+
+def test_deeply_nested_json_is_a_mismatch_not_a_crash() -> None:
+    assert sniff_matches(b"[" * 100_000, "json") is False

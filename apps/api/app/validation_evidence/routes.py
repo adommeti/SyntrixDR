@@ -8,6 +8,7 @@ from starlette.datastructures import UploadFile
 
 from app.core.config import get_settings
 from app.core.errors import IdempotencyKeyRequiredError
+from app.core.file_policy import get_file_policy
 from app.core.idempotency import IDEMPOTENCY_HEADER, complete, hash_file_payload, require_idempotency_key
 from app.core.storage import ObjectStore
 from app.dr_events.participants import user_can_see_event
@@ -18,6 +19,7 @@ from app.identity_auth.dependencies import (
     ObjectStoreDep,
     RequireCsrfDependency,
 )
+from app.plans_import.commands import FileTooLargeError
 from app.validation_evidence.commands import EvidenceNotFoundError, attach_file, create_evidence
 from app.validation_evidence.models import EvidenceItem
 from app.validation_evidence.queries import get_evidence, resolve_evidence_target
@@ -25,6 +27,9 @@ from app.validation_evidence.scanning import MalwareScannerDep
 from app.validation_evidence.schemas import CreateEvidenceRequest, EvidenceResponse
 
 router = APIRouter(prefix="/api/v1", tags=["evidence"])
+
+#: Multipart framing and headers around the file part; a body larger than cap + this is oversize for sure.
+_MULTIPART_OVERHEAD = 64 * 1024
 
 
 def _response(item: EvidenceItem, object_store: ObjectStore) -> EvidenceResponse:
@@ -110,11 +115,16 @@ async def post_attach_file(
     read by hand and hashed from filename + bytes (the BUILD-05 multipart rule)."""
     if not request.headers.get(IDEMPOTENCY_HEADER):
         raise IdempotencyKeyRequiredError
-    form = await request.form()
+    # Reject an oversize body before parsing it (D-225 cap; memory). The exact check is in the command.
+    max_bytes = (await get_file_policy(session)).max_bytes
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > max_bytes + _MULTIPART_OVERHEAD:
+        raise FileTooLargeError(max_bytes)
+    form = await request.form(max_part_size=max_bytes + 1)
     upload = form.get("file")
     if not isinstance(upload, UploadFile):
         return JSONResponse(status_code=422, content={"detail": "multipart field 'file' is required"})
-    content = await upload.read()
+    content = await upload.read(max_bytes + 1)  # one byte past the cap is enough to prove the overflow
     filename = upload.filename or "upload"
 
     ctx = await require_idempotency_key(

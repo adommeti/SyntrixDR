@@ -359,3 +359,26 @@ async def test_stale_version_and_invisible_event(session: AsyncSession, clock: F
             clock=clock,
         )
     assert e.value.code == "DR_APPLICATION_NOT_FOUND"
+
+
+@pytest.mark.parametrize("event_status", ["CLOSED", "CANCELLED"])
+async def test_applications_of_a_finished_event_take_no_commands(
+    session: AsyncSession, clock: FakeClock, event_status: str
+) -> None:
+    w = await build_world(session)
+    await _app_in(session, w, RECOVERING)
+    await session.execute(
+        text("UPDATE dr_events SET status = CAST(:s AS dr_event_status), cancel_reason = 'x' WHERE id = :e"),
+        {"s": event_status, "e": w.event_id},
+    )
+    with pytest.raises(AppError) as e:
+        await _submit(session, clock, w, "admin_id")
+    assert e.value.code == "INVALID_TRANSITION" and event_status in e.value.message
+
+
+async def test_a_stale_failback_submit_is_409(session: AsyncSession, clock: FakeClock) -> None:
+    w = await build_world(session)
+    await _app_in(session, w, FB)
+    with pytest.raises(AppError) as e:
+        await _submit(session, clock, w, "admin_id", version=7)
+    assert e.value.code == "CONCURRENCY_CONFLICT"

@@ -96,3 +96,21 @@ async def test_signed_download_url_reads_the_private_object(object_store: Object
     assert (signed.status_code, signed.content) == (200, b"signed")
     assert bare.status_code in (403, 404)  # private container: no anonymous read
     assert forged.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_names_with_spaces_and_reserved_characters_round_trip_move_and_sign(
+    object_store: ObjectStore,
+) -> None:
+    container = f"test-{uuid.uuid4().hex}"
+    uri = await object_store.upload(
+        container, "a b/my report #1 100%.pdf", b"%PDF-", content_type="application/pdf"
+    )
+
+    assert await object_store.download(uri) == b"%PDF-"
+    moved = await object_store.move(uri, "quarantine/a b/my report #1 100%.pdf")
+    assert await object_store.download(moved) == b"%PDF-"
+    import httpx
+
+    async with httpx.AsyncClient() as client:
+        assert (await client.get(object_store.signed_download_url(moved, ttl_seconds=60))).content == b"%PDF-"

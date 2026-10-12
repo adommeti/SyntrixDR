@@ -378,3 +378,72 @@ async def test_every_allowed_target_type_resolves_to_its_event(
         session, redis_client, clock, w.admin_id, "/api/v1/evidence", body("WORK_STREAM", w.work_stream_id)
     )
     assert bad.status_code == 422  # schema Literal: not in the evidence subset
+
+
+@pytest.mark.parametrize("name", ["my report #1.pdf", "100% done.pdf", "résumé+final.pdf", "a+b.pdf"])
+async def test_awkward_file_names_upload_quarantine_and_download_fine(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock, name: str
+) -> None:
+    """Blob names are opaque (`<event>/<evidence>/<uuid>.<ext>`), so user text never reaches the object
+    store path: spaces, `#`, `%`, `+` and non-ASCII in `file_name` neither break the SAS signature nor the
+    quarantine move (review finding)."""
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status="IN_PROGRESS")
+    clean_id = await _handshake(session, redis_client, clock, w, task_id, name)
+    r = await _upload(session, redis_client, clock, w.executor_id, clean_id, name, PDF)
+    assert r.status_code == 200, r.text
+    assert r.json()["file_name"] == name
+    async with httpx.AsyncClient() as client:
+        assert (await client.get(r.json()["download_url"])).content == PDF
+
+    bad_name = name.replace(".pdf", ".txt")
+    bad_id = await _handshake(session, redis_client, clock, w, task_id, bad_name)
+    r = await _upload(session, redis_client, clock, w.executor_id, bad_id, bad_name, EICAR_SIGNATURE)
+    assert r.json()["malware_scan_status"] == "INFECTED"
+    blob_uri = (
+        await session.execute(text("SELECT blob_uri FROM evidence_items WHERE id = :e"), {"e": bad_id})
+    ).scalar_one()
+    assert "/quarantine/" in blob_uri and name.split(".")[0] not in blob_uri
+
+
+async def test_control_characters_and_long_names_are_sanitised(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status="IN_PROGRESS")
+    raw = "  ..\x00evil\x1f../" + "x" * 200 + ".pdf"
+    r = await _post_json(
+        session, redis_client, clock, w.executor_id, "/api/v1/evidence",
+        {"target_type": "TASK", "target_id": str(task_id), "evidence_type": "FILE", "file_name": raw},
+    )  # fmt: skip
+    assert r.status_code == 201, r.text
+    stored = r.json()["file_name"]
+    assert "\x00" not in stored and "\x1f" not in stored and "/" not in stored and not stored.startswith(".")
+    assert len(stored) <= 255
+
+
+async def test_an_owner_may_attach_evidence_to_their_application_validation(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    """A VALIDATION target on a DR Application resolves to that Application's validators (review finding)."""
+    w = await build_world(session)
+    validation_id = uuid.uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO validations (id, target_type, target_id, status, created_by_user_id, "
+            "created_at, updated_at) VALUES (:id, 'DR_APPLICATION', :a, 'PENDING', :u, now(), now())"
+        ),
+        {"id": validation_id, "a": w.dr_application_id, "u": w.coordinator_id},
+    )
+    body = {
+        "target_type": "VALIDATION",
+        "target_id": str(validation_id),
+        "evidence_type": "TEXT",
+        "text_content": "x",
+    }
+
+    ok = await _post_json(session, redis_client, clock, w.system_owner_id, "/api/v1/evidence", body)
+    assert ok.status_code == 201, ok.text
+    for actor in (w.executor_id, w.ws_lead_id, w.business_owner_id, w.other_app_owner_id):
+        denied = await _post_json(session, redis_client, clock, actor, "/api/v1/evidence", body)
+        assert denied.status_code == 403, actor

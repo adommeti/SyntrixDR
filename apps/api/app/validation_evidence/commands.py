@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import uuid
 from typing import Any
 
@@ -252,8 +253,20 @@ _HTTP_SCHEMES = ("http://", "https://")
 QUARANTINE_PREFIX = "quarantine/"
 
 
-def _blob_name(dr_event_id: uuid.UUID, evidence_id: uuid.UUID, file_name: str) -> str:
-    return f"{dr_event_id}/{evidence_id}/{file_name}"
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _safe_file_name(name: str) -> str:
+    """Display metadata only (the blob name never contains it): control characters stripped, path
+    separators replaced, trimmed, capped at 255 characters."""
+    cleaned = _CONTROL.sub("", name).replace("/", "_").replace("\\", "_").strip().strip(".")
+    return cleaned[:255]
+
+
+def _blob_name(dr_event_id: uuid.UUID, evidence_id: uuid.UUID, extension: str) -> str:
+    """Opaque, ASCII-only blob names (`<event>/<evidence>/<uuid>.<ext>`): no user text reaches the
+    object store path, so URL encoding, length limits and reserved characters cannot bite."""
+    return f"{dr_event_id}/{evidence_id}/{uuid.uuid4()}.{extension}"
 
 
 async def _audit_on_target(
@@ -347,7 +360,7 @@ async def create_evidence(
             raise EvidencePayloadInvalidError("EXTERNAL_LINK evidence needs an http(s) external_url.")
         item.external_url = url
     else:  # FILE / SCREENSHOT handshake
-        name = (file_name or "").strip().replace("/", "_").replace("\\", "_")
+        name = _safe_file_name(file_name or "")
         if not name:
             raise EvidencePayloadInvalidError("FILE and SCREENSHOT evidence need a file_name.")
         policy = await get_file_policy(session)
@@ -357,7 +370,7 @@ async def create_evidence(
         item.file_name = name
         item.malware_scan_status = MalwareScanStatus.PENDING.value
         container = get_settings().blob_container_evidence
-        item.blob_uri = f"planned://{container}/{_blob_name(target.dr_event_id, item.id, name)}"
+        item.blob_uri = f"planned://{container}/{_blob_name(target.dr_event_id, item.id, extension)}"
     session.add(item)
     await session.flush()
     await _audit_on_target(
@@ -394,7 +407,7 @@ async def attach_file(
         raise EvidenceFileAlreadyAttachedError()
 
     policy = await get_file_policy(session)
-    name = (item.file_name or file_name).strip()
+    name = _safe_file_name(item.file_name or file_name)
     extension = extension_of(name)
     if extension not in policy.allowed_extensions:
         raise UnsupportedFileTypeError(extension)
@@ -404,41 +417,48 @@ async def attach_file(
     if mime is None or mime not in policy.allowed_mime_types:
         raise FileContentMismatchError(extension)
 
-    blob_name = _blob_name(target.dr_event_id, item.id, name)
+    blob_name = _blob_name(target.dr_event_id, item.id, extension)
     uri = await object_store.upload(
         get_settings().blob_container_evidence, blob_name, content, content_type=mime
     )
-    item.blob_uri = uri
-    item.file_name = name
-    item.mime_type = mime
-    item.size_bytes = len(content)
-    item.checksum = hashlib.sha256(content).hexdigest()
-    await session.flush()
-    attached = {
-        "size_bytes": item.size_bytes,
-        "mime_type": mime,
-        "checksum": item.checksum,
-        "scanner": scanner.name,
-    }
-    await _audit_on_target(
-        session,
-        item=item,
-        target=target,
-        actor_id=actor_id,
-        action="EVIDENCE_FILE_ATTACHED",
-        clock=clock,
-        extra=attached,
-    )
-
-    verdict = await scanner.scan(content, file_name=name)
-    if verdict is MalwareScanStatus.PENDING:
-        item.malware_scan_status = MalwareScanStatus.PENDING.value  # Defender reports via the webhook
+    try:
+        item.blob_uri = uri
+        item.file_name = name
+        item.mime_type = mime
+        item.size_bytes = len(content)
+        item.checksum = hashlib.sha256(content).hexdigest()
+        await session.flush()
+        attached = {
+            "size_bytes": item.size_bytes,
+            "mime_type": mime,
+            "checksum": item.checksum,
+            "scanner": scanner.name,
+        }
+        await _audit_on_target(
+            session,
+            item=item,
+            target=target,
+            actor_id=actor_id,
+            action="EVIDENCE_FILE_ATTACHED",
+            clock=clock,
+            extra=attached,
+        )
+        verdict = await scanner.scan(content, file_name=name)
+        if verdict is MalwareScanStatus.PENDING:
+            item.malware_scan_status = MalwareScanStatus.PENDING.value  # Defender reports via the webhook
+            return item
+        await _apply_verdict(
+            session, item=item, target=target, verdict=verdict, object_store=object_store, actor_id=actor_id,
+            actor_type="USER", clock=clock,
+        )  # fmt: skip
         return item
-    await _apply_verdict(
-        session, item=item, target=target, verdict=verdict, object_store=object_store, actor_id=actor_id,
-        actor_type="USER", clock=clock,
-    )  # fmt: skip
-    return item
+    except Exception:
+        # The DB transaction rolls back; the blob must not outlive it (best-effort compensation).
+        try:
+            await object_store.delete(uri)
+        except Exception:  # noqa: BLE001
+            pass
+        raise
 
 
 async def _apply_verdict(
@@ -452,6 +472,8 @@ async def _apply_verdict(
     actor_type: str,
     clock: Clock,
 ) -> None:
+    # The verdict is recorded before any blob I/O: even if the quarantine move fails, an INFECTED item
+    # never counts (CLEAN-only counter) and never gets a download URL (CLEAN-only SAS).
     item.malware_scan_status = verdict.value
     item.malware_scanned_at = clock.now()
     await session.flush()

@@ -65,6 +65,7 @@ class EvidenceTarget:
     target_id: uuid.UUID
     dr_event_id: uuid.UUID
     task_id: uuid.UUID | None  # the Task behind a TASK / BLOCKER / VALIDATION(TASK) target
+    dr_application_id: uuid.UUID | None = None  # the Application behind DR_APPLICATION / VALIDATION(app)
 
 
 async def resolve_evidence_target(
@@ -74,13 +75,15 @@ async def resolve_evidence_target(
     exist. Visibility is the caller's check (D-222)."""
     event_id: uuid.UUID | None = None
     task_id: uuid.UUID | None = None
+    app_id: uuid.UUID | None = None
     if target_type == TargetType.TASK:
         task = await get_task(session, target_id)
         if task is not None:
             event_id, task_id = task.dr_event_id, task.id
     elif target_type == TargetType.DR_APPLICATION:
         dr_application = await get_dr_application(session, target_id)
-        event_id = dr_application.dr_event_id if dr_application is not None else None
+        if dr_application is not None:
+            event_id, app_id = dr_application.dr_event_id, dr_application.id
     elif target_type == TargetType.MILESTONE:
         from app.milestones.queries import get_milestone  # late: milestones.queries imports tasks' views
 
@@ -100,13 +103,20 @@ async def resolve_evidence_target(
                 event_id, task_id = task.dr_event_id, task.id
         elif validation is not None:
             dr_application = await get_dr_application(session, validation.target_id)
-            event_id = dr_application.dr_event_id if dr_application is not None else None
+            if dr_application is not None:
+                event_id, app_id = dr_application.dr_event_id, dr_application.id
     elif target_type == TargetType.ISSUE_FINDING:
         issue = await get_issue(session, target_id)
         event_id = issue.dr_event_id if issue is not None else None
     if event_id is None:
         return None
-    return EvidenceTarget(target_type=target_type, target_id=target_id, dr_event_id=event_id, task_id=task_id)
+    return EvidenceTarget(
+        target_type=target_type,
+        target_id=target_id,
+        dr_event_id=event_id,
+        task_id=task_id,
+        dr_application_id=app_id,
+    )
 
 
 async def get_evidence(session: AsyncSession, evidence_id: uuid.UUID) -> EvidenceItem | None:
