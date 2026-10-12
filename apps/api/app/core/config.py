@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     blob_container_documents: str = "documents"
     blob_container_packages: str = "packages"
     blob_container_imports: str = "imports"
+    #: ADR-014: private objects, short-lived authorised download URLs.
+    blob_sas_ttl_seconds: int = 300
+    #: ADR-024 / D-245: "mock" (EICAR -> INFECTED, else CLEAN, synchronous) or "defender" (PENDING until the
+    #: Event Grid webhook reports). Never a required dependency of a critical workflow.
+    malware_scanner: str = "mock"
+    malware_webhook_secret: str = ""
 
     smtp_host: str = "localhost"
     smtp_port: int = 1025

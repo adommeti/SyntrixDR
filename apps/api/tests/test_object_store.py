@@ -49,3 +49,50 @@ async def test_download_of_missing_blob_raises_object_not_found(object_store: Ob
 
     with pytest.raises(ObjectNotFoundError):
         await object_store.download(missing_uri)
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_the_object(object_store: ObjectStore) -> None:
+    container = f"test-{uuid.uuid4().hex}"
+    uri = await object_store.upload(container, "a.txt", b"bytes", content_type="text/plain")
+
+    await object_store.delete(uri)
+
+    with pytest.raises(ObjectNotFoundError):
+        await object_store.download(uri)
+    with pytest.raises(ObjectNotFoundError):
+        await object_store.delete(uri)
+
+
+@pytest.mark.asyncio
+async def test_move_quarantines_under_a_new_name_and_keeps_the_content_type(
+    object_store: ObjectStore,
+) -> None:
+    container = f"test-{uuid.uuid4().hex}"
+    uri = await object_store.upload(container, "evt/ev/report.pdf", b"%PDF-", content_type="application/pdf")
+
+    new_uri = await object_store.move(uri, "quarantine/evt/ev/report.pdf")
+
+    assert new_uri.endswith("/quarantine/evt/ev/report.pdf")
+    assert await object_store.download(new_uri) == b"%PDF-"
+    assert await object_store.content_type(new_uri) == "application/pdf"
+    with pytest.raises(ObjectNotFoundError):
+        await object_store.download(uri)
+
+
+@pytest.mark.asyncio
+async def test_signed_download_url_reads_the_private_object(object_store: ObjectStore) -> None:
+    import httpx
+
+    container = f"test-{uuid.uuid4().hex}"
+    uri = await object_store.upload(container, "a.txt", b"signed", content_type="text/plain")
+
+    url = object_store.signed_download_url(uri, ttl_seconds=60)
+    async with httpx.AsyncClient() as client:
+        signed = await client.get(url)
+        bare = await client.get(uri)
+        forged = await client.get(url.replace("sig=", "sig=AAAA"))
+
+    assert (signed.status_code, signed.content) == (200, b"signed")
+    assert bare.status_code in (403, 404)  # private container: no anonymous read
+    assert forged.status_code == 403
