@@ -4061,6 +4061,32 @@
         "title": "StartTaskRequest",
         "type": "object"
       },
+      "SubmitApplicationValidationRequest": {
+        "additionalProperties": false,
+        "description": "`POST /dr-applications/{id}/submit-validation` (API_CONTRACT.md:206).",
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "SubmitApplicationValidationRequest",
+        "type": "object"
+      },
       "SubmitValidationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4969,6 +4995,53 @@
           "is_active"
         ],
         "title": "UserResponse",
+        "type": "object"
+      },
+      "ValidateApplicationRequest": {
+        "additionalProperties": false,
+        "description": "`POST /dr-applications/{id}/validate` (API_CONTRACT.md:207); the business note is the Business\nOwner's optional confirmation carried on the Validation record (RBAC_MATRIX.md:18).",
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "business_confirmation_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Confirmation Note"
+          },
+          "business_confirmed": {
+            "default": false,
+            "title": "Business Confirmed",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "expected_version",
+          "approve"
+        ],
+        "title": "ValidateApplicationRequest",
         "type": "object"
       },
       "ValidateTaskRequest": {
@@ -6282,6 +6355,110 @@
         "summary": "Post Verify Blocker",
         "tags": [
           "blockers"
+        ]
+      }
+    },
+    "/api/v1/dr-applications/{dr_application_id}/submit-validation": {
+      "post": {
+        "description": "API_CONTRACT.md:206 -- RECOVERING \u2192 TECHNICAL_VALIDATION (or a failback validation request).",
+        "operationId": "post_submit_application_validation_api_v1_dr_applications__dr_application_id__submit_validation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dr_application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dr Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitApplicationValidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Submit Application Validation",
+        "tags": [
+          "dr_events"
+        ]
+      }
+    },
+    "/api/v1/dr-applications/{dr_application_id}/validate": {
+      "post": {
+        "description": "API_CONTRACT.md:207 -- technical validation; never via AI (D-228).",
+        "operationId": "post_validate_application_api_v1_dr_applications__dr_application_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dr_application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dr Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Validate Application",
+        "tags": [
+          "dr_events"
         ]
       }
     },

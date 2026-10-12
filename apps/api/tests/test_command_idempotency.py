@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockers.routes import router as blockers_router
 from app.comments_mentions_notifications.routes import router as collaboration_router
 from app.core.clock import FakeClock
+from app.dr_events.routes import router as dr_events_router
 from app.issues_findings.routes import router as issues_router
 from app.milestones.routes import router as milestones_router
 from app.resources_skills.routes import router as resources_skills_router
@@ -35,6 +36,7 @@ _ROUTERS = (
     issues_router,
     collaboration_router,
     evidence_router,
+    dr_events_router,
 )
 #: Machine-to-machine receivers authenticated by HMAC, not a user command (ADR-024): no session, CSRF or key.
 _INTERNAL_ROUTERS = (malware_webhook_router,)
@@ -81,6 +83,18 @@ BODIES: dict[tuple[str, str], dict[str, Any] | None] = {
         "POST",
         "/api/v1/evidence/{evidence_id}/file",
     ): {},  # the key is checked before the multipart body is read
+    ("POST", "/api/v1/dr-events"): {"name": "x", "event_type": "PLANNED_DR", "application_ids": []},
+    ("POST", "/api/v1/dr-events/{event_id}/activate"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/start-failover"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/mark-failed-over"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/start-failback"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/close"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/cancel"): {"expected_version": 1, "reason": "x"},
+    ("POST", "/api/v1/dr-applications/{dr_application_id}/submit-validation"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-applications/{dr_application_id}/validate"): {
+        "expected_version": 1,
+        "approve": True,
+    },
 }
 
 
@@ -123,6 +137,7 @@ async def test_command_without_an_idempotency_key_is_400(
         issue_id=uuid.uuid4(),
         alert_id=uuid.uuid4(),
         evidence_id=uuid.uuid4(),
+        dr_application_id=uuid.uuid4(),
         target_type="TASK",
         target_id=uuid.uuid4(),
         event_id=w.event_id,

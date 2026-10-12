@@ -450,6 +450,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dr-applications/{dr_application_id}/submit-validation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Submit Application Validation
+         * @description API_CONTRACT.md:206 -- RECOVERING → TECHNICAL_VALIDATION (or a failback validation request).
+         */
+        post: operations["post_submit_application_validation_api_v1_dr_applications__dr_application_id__submit_validation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-applications/{dr_application_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Validate Application
+         * @description API_CONTRACT.md:207 -- technical validation; never via AI (D-228).
+         */
+        post: operations["post_validate_application_api_v1_dr_applications__dr_application_id__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dr-events": {
         parameters: {
             query?: never;
@@ -2690,6 +2730,16 @@ export interface components {
             /** Override Reason */
             override_reason?: string | null;
         };
+        /**
+         * SubmitApplicationValidationRequest
+         * @description `POST /dr-applications/{id}/submit-validation` (API_CONTRACT.md:206).
+         */
+        SubmitApplicationValidationRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Override Reason */
+            override_reason?: string | null;
+        };
         /** SubmitValidationRequest */
         SubmitValidationRequest: {
             /** Expected Version */
@@ -3024,6 +3074,26 @@ export interface components {
             is_active: boolean;
             /** Job Title */
             job_title: string | null;
+        };
+        /**
+         * ValidateApplicationRequest
+         * @description `POST /dr-applications/{id}/validate` (API_CONTRACT.md:207); the business note is the Business
+         *     Owner's optional confirmation carried on the Validation record (RBAC_MATRIX.md:18).
+         */
+        ValidateApplicationRequest: {
+            /** Approve */
+            approve: boolean;
+            /** Business Confirmation Note */
+            business_confirmation_note?: string | null;
+            /**
+             * Business Confirmed
+             * @default false
+             */
+            business_confirmed: boolean;
+            /** Expected Version */
+            expected_version: number;
+            /** Note */
+            note?: string | null;
         };
         /** ValidateTaskRequest */
         ValidateTaskRequest: {
@@ -3896,6 +3966,76 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["VerifyBlockerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_submit_application_validation_api_v1_dr_applications__dr_application_id__submit_validation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dr_application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitApplicationValidationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_validate_application_api_v1_dr_applications__dr_application_id__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dr_application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidateApplicationRequest"];
             };
         };
         responses: {

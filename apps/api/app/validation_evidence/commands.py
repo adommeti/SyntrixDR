@@ -68,6 +68,73 @@ async def open_task_validation(
     return validation
 
 
+async def open_application_validation(
+    session: AsyncSession,
+    *,
+    dr_application_id: uuid.UUID,
+    dr_event_id: uuid.UUID,
+    phase: str,
+    submitted_by_user_id: uuid.UUID,
+    clock: Clock,
+) -> Validation:
+    """The DR Application's PENDING Validation (D-210), opened by
+    `DrApplicationTransitionService.submit_validation` after its own authorization and guards.
+    `verification_note` records the phase (FAILOVER / FAILBACK) the validation is for."""
+    now = clock.now()
+    validation = Validation(
+        target_type="DR_APPLICATION",
+        target_id=dr_application_id,
+        verification_note=f"phase:{phase}",
+        submitted_at=now,
+        created_by_user_id=submitted_by_user_id,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(validation)
+    await session.flush()
+    await write_audit(
+        session,
+        actor_user_id=submitted_by_user_id,
+        entity_type="VALIDATION",
+        entity_id=validation.id,
+        action="VALIDATION_OPENED",
+        dr_event_id=dr_event_id,
+        after={
+            "target_type": "DR_APPLICATION",
+            "target_id": str(dr_application_id),
+            "status": validation.status,
+            "phase": phase,
+        },
+    )
+    return validation
+
+
+async def close_application_validation(
+    session: AsyncSession,
+    *,
+    validation: Validation,
+    approve: bool,
+    validator_user_id: uuid.UUID,
+    note: str | None,
+    business_confirmed: bool,
+    business_confirmation_note: str | None,
+    dr_event_id: uuid.UUID,
+    clock: Clock,
+) -> Validation:
+    """Application-layer entry for `DrApplicationTransitionService.validate` (cross-module rule)."""
+    validation.business_confirmed = business_confirmed
+    validation.business_confirmation_note = business_confirmation_note
+    return await ValidationTransitionService.close_task_validation(
+        session,
+        validation=validation,
+        approve=approve,
+        validator_user_id=validator_user_id,
+        note=note,
+        dr_event_id=dr_event_id,
+        clock=clock,
+    )
+
+
 async def close_task_validation(
     session: AsyncSession,
     *,

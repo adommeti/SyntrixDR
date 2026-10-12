@@ -8,21 +8,25 @@ from fastapi.responses import JSONResponse
 
 from app.core.idempotency import complete, require_idempotency_key
 from app.dr_events.commands import DrEventNotFoundError, create_event
-from app.dr_events.models import DrEvent
+from app.dr_events.models import DrApplication, DrEvent
+from app.dr_events.ports import RecoveryMetricsDep
 from app.dr_events.queries import get_visible_event, list_dr_applications, list_visible_events
 from app.dr_events.schemas import (
     ActivateEventRequest,
     CancelEventRequest,
     CloseEventRequest,
     CreateDrEventRequest,
+    DrApplicationCommandResponse,
     DrApplicationResponse,
     DrEventDetailResponse,
     DrEventListResponse,
     DrEventResponse,
     ExpectedVersionRequest,
     StartFailoverRequest,
+    SubmitApplicationValidationRequest,
+    ValidateApplicationRequest,
 )
-from app.dr_events.transition_service import DrEventTransitionService
+from app.dr_events.transition_service import DrApplicationTransitionService, DrEventTransitionService
 from app.identity_auth.dependencies import ClockDep, CurrentSession, DbSession, RequireCsrfDependency
 
 router = APIRouter(prefix="/api/v1", tags=["dr_events"])
@@ -278,6 +282,103 @@ async def post_cancel_event(
             event_id=event_id,
             expected_version=body.expected_version,
             reason=body.reason,
+            clock=clock,
+        ),
+    )
+
+
+def _application_response(dr_application: DrApplication) -> DrApplicationCommandResponse:
+    return DrApplicationCommandResponse(
+        id=dr_application.id,
+        application_id=dr_application.application_id,
+        status=dr_application.status,
+        effective_tier_id=dr_application.effective_tier_id,
+        effective_sla_minutes=dr_application.effective_sla_minutes,
+        rto_target_minutes=dr_application.rto_target_minutes,
+        rpo_target_minutes=dr_application.rpo_target_minutes,
+        rpo_not_applicable=dr_application.rpo_not_applicable,
+        failback_required=dr_application.failback_required,
+        version=dr_application.version,
+        technical_validated_at=dr_application.technical_validated_at,
+    )
+
+
+async def _run_application_transition(
+    request: Request,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+    call: Callable[[], Awaitable[DrApplication]],
+) -> DrApplicationCommandResponse | JSONResponse:
+    ctx = await require_idempotency_key(request, session, session_data.user_id, clock)
+    if ctx.is_replay:
+        assert ctx.stored_status is not None
+        return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
+    dr_application = await call()
+    response = _application_response(dr_application)
+    await complete(session, ctx, 200, response.model_dump(mode="json"))
+    await session.commit()
+    return response
+
+
+@router.post(
+    "/dr-applications/{dr_application_id}/submit-validation",
+    dependencies=[RequireCsrfDependency],
+    response_model=None,
+)
+async def post_submit_application_validation(
+    dr_application_id: uuid.UUID,
+    request: Request,
+    body: SubmitApplicationValidationRequest,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+) -> DrApplicationCommandResponse | JSONResponse:
+    """API_CONTRACT.md:206 -- RECOVERING → TECHNICAL_VALIDATION (or a failback validation request)."""
+    return await _run_application_transition(
+        request,
+        session,
+        session_data,
+        clock,
+        lambda: DrApplicationTransitionService.submit_validation(
+            session,
+            actor_id=session_data.user_id,
+            dr_application_id=dr_application_id,
+            expected_version=body.expected_version,
+            override_reason=body.override_reason,
+            clock=clock,
+        ),
+    )
+
+
+@router.post(
+    "/dr-applications/{dr_application_id}/validate", dependencies=[RequireCsrfDependency], response_model=None
+)
+async def post_validate_application(
+    dr_application_id: uuid.UUID,
+    request: Request,
+    body: ValidateApplicationRequest,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+    metrics: RecoveryMetricsDep,
+) -> DrApplicationCommandResponse | JSONResponse:
+    """API_CONTRACT.md:207 -- technical validation; never via AI (D-228)."""
+    return await _run_application_transition(
+        request,
+        session,
+        session_data,
+        clock,
+        lambda: DrApplicationTransitionService.validate(
+            session,
+            actor_id=session_data.user_id,
+            dr_application_id=dr_application_id,
+            expected_version=body.expected_version,
+            approve=body.approve,
+            note=body.note,
+            business_confirmed=body.business_confirmed,
+            business_confirmation_note=body.business_confirmation_note,
+            metrics=metrics,
             clock=clock,
         ),
     )

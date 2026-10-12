@@ -683,3 +683,21 @@ async def get_task(session: AsyncSession, task_id: uuid.UUID) -> Task | None:
     return (
         await session.execute(select(Task).where(Task.id == task_id, Task.deleted_at.is_(None)))
     ).scalar_one_or_none()
+
+
+async def unfinished_phase_task_ids(
+    session: AsyncSession, dr_application_id: uuid.UUID, phase: str
+) -> list[uuid.UUID]:
+    """Tasks of this DR Application in `phase` that are BLOCKED or IN_PROGRESS -- the
+    `dr-applications/{id}/submit-validation` guard (STATE_MACHINES.md §Application recovery, I-3)."""
+    rows = await session.execute(
+        select(Task.id)
+        .where(
+            Task.dr_application_id == dr_application_id,
+            Task.phase == phase,
+            Task.status.in_(("BLOCKED", "IN_PROGRESS")),
+            Task.deleted_at.is_(None),
+        )
+        .order_by(Task.id)
+    )
+    return [task_id for (task_id,) in rows]

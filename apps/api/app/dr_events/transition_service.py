@@ -13,11 +13,17 @@ from app.core.errors import AppError, ConcurrencyConflictError, OverrideReasonRe
 from app.core.outbox import write_outbox
 from app.dr_events.commands import DrEventNotFoundError, record_override
 from app.dr_events.models import DrApplication, DrEvent, Override
+from app.dr_events.participants import user_can_see_event
+from app.dr_events.policies import actor_may_validate_application
+from app.dr_events.ports import NoRecoveryMetricsYet, RecoveryMetrics
 from app.dr_events.queries import has_non_terminal_children
 from app.dr_events.readiness_service import NON_OVERRIDABLE_KEYS, evaluate_readiness
 from app.plans_import.commands import capture_baseline_snapshot
-from app.tasks_dependencies.queries import unfinished_monitoring_task_ids
-from app.users_teams_org.authorization import AuthorizationService, Capability
+from app.tasks_dependencies.policies import SelfValidationForbiddenError
+from app.tasks_dependencies.queries import unfinished_monitoring_task_ids, unfinished_phase_task_ids
+from app.users_teams_org.authorization import AuthorizationRequiredError, AuthorizationService, Capability
+from app.validation_evidence.commands import close_application_validation, open_application_validation
+from app.validation_evidence.queries import get_pending_validation
 
 
 class MonitoringClosureWarningError(AppError):
@@ -550,4 +556,273 @@ class DrEventTransitionService:
             action="DR_EVENT_CANCELLED",
             clock=clock,
             extra_after={"cancel_reason": reason},
+        )
+
+
+# --------------------------------------------------------------------------------------------
+# DR Application: technical validation (STATE_MACHINES.md §Application recovery, I-3, D-208, D-254)
+# --------------------------------------------------------------------------------------------
+
+
+class DrApplicationNotFoundError(AppError):
+    """404 for a missing DR Application and for one in an Event the caller can't see (invariant #1)."""
+
+    code = "DR_APPLICATION_NOT_FOUND"
+    status_code = 404
+
+    def __init__(self) -> None:
+        super().__init__("DR Application not found.")
+
+
+class InvalidApplicationTransitionError(AppError):
+    code = "INVALID_TRANSITION"
+    status_code = 409
+
+    def __init__(self, command: str, current: str, detail: str | None = None) -> None:
+        message = f"Cannot {command.replace('_', '-')} a DR Application that is {current}."
+        super().__init__(f"{message} {detail}" if detail else message)
+
+
+class ApplicationTasksUnfinishedError(AppError):
+    code = "APPLICATION_TASKS_UNFINISHED"
+    status_code = 409
+
+    def __init__(self, phase: str, task_ids: list[uuid.UUID]) -> None:
+        super().__init__(
+            f"{phase} Tasks of this Application are still BLOCKED or IN_PROGRESS. Finish them, or submit "
+            "with an override_reason.",
+            details={"phase": phase, "unfinished_task_ids": [str(t) for t in task_ids]},
+        )
+
+
+class RejectionNoteRequiredError(AppError):
+    code = "REJECTION_NOTE_REQUIRED"
+    status_code = 422
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Rejecting an Application validation needs a note (it returns the Application to RECOVERING)."
+        )
+
+
+#: The phase whose Tasks must be finished before technical validation, per current status (I-3).
+_PHASE_FOR_SUBMIT: dict[str, str] = {"RECOVERING": "FAILOVER", "FAILBACK_IN_PROGRESS": "FAILBACK"}
+_VALIDATABLE = frozenset({"TECHNICAL_VALIDATION", "FAILBACK_IN_PROGRESS"})
+
+
+async def _load_visible_application(
+    session: AsyncSession, actor_id: uuid.UUID, dr_application_id: uuid.UUID
+) -> DrApplication:
+    dr_application = (
+        await session.execute(
+            select(DrApplication)
+            .where(DrApplication.id == dr_application_id, DrApplication.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if dr_application is None or not await user_can_see_event(session, actor_id, dr_application.dr_event_id):
+        raise DrApplicationNotFoundError()
+    return dr_application
+
+
+def _app_snapshot(dr_application: DrApplication) -> dict[str, object]:
+    return {"status": dr_application.status, "version": dr_application.version}
+
+
+async def _finish_application(
+    session: AsyncSession,
+    *,
+    dr_application: DrApplication,
+    actor_id: uuid.UUID,
+    before: Mapping[str, object],
+    action: str,
+    clock: Clock,
+    extra: Mapping[str, object] | None = None,
+    emit_health: bool = False,
+) -> DrApplication:
+    """Shared tail for Application commands: version, audit, and -- when the validation score moved --
+    an `ApplicationHealthChanged` outbox event (the D-234 union has no plain Application event;
+    BUILD-09.plan.md Risk B3). The status write stays in each caller."""
+    dr_application.version += 1
+    dr_application.updated_at = clock.now()
+    await session.flush()
+    after: dict[str, object] = {**_app_snapshot(dr_application), **(extra or {})}
+    await write_audit(
+        session,
+        actor_user_id=actor_id,
+        entity_type="DR_APPLICATION",
+        entity_id=dr_application.id,
+        action=action,
+        dr_event_id=dr_application.dr_event_id,
+        before=dict(before),
+        after=after,
+    )
+    if emit_health:
+        await write_outbox(
+            session,
+            aggregate_type="DR_APPLICATION",
+            aggregate_id=dr_application.id,
+            event_type="ApplicationHealthChanged",
+            payload={"change": action, **after},
+            clock=clock,
+            dr_event_id=dr_application.dr_event_id,
+        )
+    return dr_application
+
+
+class DrApplicationTransitionService:
+    """`submit_validation` and `validate` on the canonical DR Application machine (D-208). The two
+    side-effect transitions (NOT_STARTED → RECOVERING, FAILED_OVER → FAILBACK_IN_PROGRESS) belong to the
+    Event commands above. Never via AI (D-228)."""
+
+    @staticmethod
+    async def submit_validation(
+        session: AsyncSession,
+        *,
+        actor_id: uuid.UUID,
+        dr_application_id: uuid.UUID,
+        expected_version: int,
+        override_reason: str | None = None,
+        clock: Clock | None = None,
+    ) -> DrApplication:
+        """RECOVERING → TECHNICAL_VALIDATION, or -- while FAILBACK_IN_PROGRESS -- a failback validation
+        request that leaves the status alone. Guard: no Task of the Application in the phase's work
+        (FAILOVER / FAILBACK) may be BLOCKED or IN_PROGRESS unless an audited override with reason."""
+        clock = clock or SystemClock()
+        dr_application = await _load_visible_application(session, actor_id, dr_application_id)
+        if not await actor_may_validate_application(session, actor_id, dr_application):
+            raise AuthorizationRequiredError()
+        if dr_application.version != expected_version:
+            raise ConcurrencyConflictError()
+        phase = _PHASE_FOR_SUBMIT.get(dr_application.status)
+        if phase is None:
+            raise InvalidApplicationTransitionError("submit_validation", dr_application.status)
+        if await get_pending_validation(session, "DR_APPLICATION", dr_application.id) is not None:
+            raise InvalidApplicationTransitionError(
+                "submit_validation", dr_application.status, "A validation is already pending."
+            )
+
+        unfinished = await unfinished_phase_task_ids(session, dr_application.id, phase)
+        reason = override_reason.strip() if override_reason and override_reason.strip() else None
+        if unfinished:
+            if reason is None:
+                raise ApplicationTasksUnfinishedError(phase, unfinished)
+            await record_override(
+                session,
+                dr_event_id=dr_application.dr_event_id,
+                target_type="DR_APPLICATION",
+                target_id=dr_application.id,
+                override_type="APPLICATION_VALIDATION_OVERRIDE",
+                reason=reason,
+                performed_by_user_id=actor_id,
+                metadata={"phase": phase, "unfinished_task_ids": [str(t) for t in unfinished]},
+            )
+            await write_audit(
+                session,
+                actor_user_id=actor_id,
+                entity_type="DR_APPLICATION",
+                entity_id=dr_application.id,
+                action="APPLICATION_VALIDATION_OVERRIDE_RECORDED",
+                dr_event_id=dr_application.dr_event_id,
+                after={"reason": reason, "phase": phase, "unfinished_task_ids": [str(t) for t in unfinished]},
+            )
+
+        before = _app_snapshot(dr_application)
+        if dr_application.status == "RECOVERING":
+            dr_application.status = "TECHNICAL_VALIDATION"
+        validation = await open_application_validation(
+            session,
+            dr_application_id=dr_application.id,
+            dr_event_id=dr_application.dr_event_id,
+            phase=phase,
+            submitted_by_user_id=actor_id,
+            clock=clock,
+        )
+        return await _finish_application(
+            session,
+            dr_application=dr_application,
+            actor_id=actor_id,
+            before=before,
+            action="DR_APPLICATION_SUBMITTED",
+            clock=clock,
+            extra={"phase": phase, "validation_id": str(validation.id), "override": reason is not None},
+        )
+
+    @staticmethod
+    async def validate(
+        session: AsyncSession,
+        *,
+        actor_id: uuid.UUID,
+        dr_application_id: uuid.UUID,
+        expected_version: int,
+        approve: bool,
+        note: str | None = None,
+        business_confirmed: bool = False,
+        business_confirmation_note: str | None = None,
+        metrics: RecoveryMetrics | None = None,
+        clock: Clock | None = None,
+    ) -> DrApplication:
+        """Approve: TECHNICAL_VALIDATION → FAILED_OVER, or → COMPLETED when `failback_required=false`;
+        FAILBACK_IN_PROGRESS → COMPLETED. `technical_validated_at` is the RTO clock stop (D-257); the
+        numbers are `RecoveryMetrics`' (BUILD-10). Reject: TECHNICAL_VALIDATION → RECOVERING with a note;
+        a failback rejection keeps FAILBACK_IN_PROGRESS. Never the submitter (Risk B1)."""
+        clock = clock or SystemClock()
+        now = clock.now()
+        dr_application = await _load_visible_application(session, actor_id, dr_application_id)
+        if not await actor_may_validate_application(session, actor_id, dr_application):
+            raise AuthorizationRequiredError()
+        if dr_application.version != expected_version:
+            raise ConcurrencyConflictError()
+        if dr_application.status not in _VALIDATABLE:
+            raise InvalidApplicationTransitionError("validate", dr_application.status)
+        validation = await get_pending_validation(
+            session, "DR_APPLICATION", dr_application.id, for_update=True
+        )
+        if validation is None:
+            raise InvalidApplicationTransitionError(
+                "validate", dr_application.status, "It has no open Validation record."
+            )
+        if validation.created_by_user_id == actor_id:
+            raise SelfValidationForbiddenError()
+        clean_note = note.strip() if note and note.strip() else None
+        if not approve and clean_note is None:
+            raise RejectionNoteRequiredError()
+
+        failback_phase = dr_application.status == "FAILBACK_IN_PROGRESS"
+        before = _app_snapshot(dr_application)
+        if approve:
+            if failback_phase or not dr_application.failback_required:
+                dr_application.status = "COMPLETED"
+            else:
+                dr_application.status = "FAILED_OVER"
+            if not failback_phase:
+                dr_application.technical_validated_at = now
+                await (metrics or NoRecoveryMetricsYet()).on_technical_validation(
+                    session, dr_application, validated_at=now
+                )
+        elif not failback_phase:
+            dr_application.status = "RECOVERING"
+        await close_application_validation(
+            session,
+            validation=validation,
+            approve=approve,
+            validator_user_id=actor_id,
+            note=clean_note,
+            business_confirmed=business_confirmed,
+            business_confirmation_note=(
+                business_confirmation_note.strip() if business_confirmation_note else None
+            ),
+            dr_event_id=dr_application.dr_event_id,
+            clock=clock,
+        )
+        return await _finish_application(
+            session,
+            dr_application=dr_application,
+            actor_id=actor_id,
+            before=before,
+            action="DR_APPLICATION_VALIDATED" if approve else "DR_APPLICATION_VALIDATION_REJECTED",
+            clock=clock,
+            extra={"validation_id": str(validation.id), "failback_phase": failback_phase},
+            emit_health=True,
         )

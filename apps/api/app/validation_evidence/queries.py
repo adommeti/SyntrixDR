@@ -37,6 +37,21 @@ async def get_pending_task_validation(
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+async def get_pending_validation(
+    session: AsyncSession, target_type: str, target_id: uuid.UUID, *, for_update: bool = False
+) -> Validation | None:
+    """The single open (PENDING) Validation for any target (Task or DR Application)."""
+    stmt = select(Validation).where(
+        Validation.target_type == target_type,
+        Validation.target_id == target_id,
+        Validation.status == "PENDING",
+        Validation.deleted_at.is_(None),
+    )
+    if for_update:
+        stmt = stmt.with_for_update()
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
 async def get_validation(session: AsyncSession, validation_id: uuid.UUID) -> Validation | None:
     return (
         await session.execute(
