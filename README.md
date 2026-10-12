@@ -5,12 +5,12 @@ failing back, auditing and reporting disaster-recovery exercises and real incide
 Manual-first: every critical workflow works with AI disabled.
 
 **Repository:** https://github.com/adommeti/SyntrixDR (private) · **Code name:** `drcc` (env prefix `DRCC_`, image and resource names)  
-**Status:** V1 POC in build — BUILD-01 … BUILD-07 merged (latest tag `v0.07.0`), BUILD-08 in progress.
+**Status:** V1 POC in build — BUILD-01 … BUILD-09 merged (latest tag `v0.09.0`); BUILD-10 (RTO/RPO, forecast and health) is next.
 Spec frozen 2026-09-11, reconciled 2026-09-12 (`docs/spec/FREEZE_ADDENDUM.md`).
 
 ## Screenshots
 
-Captured 2026-10-08 from the local stack (`make dev` + API + web). The web shell is the BUILD-01 foundation: navigation,
+Captured 2026-10-08 from the local stack (`make dev` + API + web); the API reference has since grown to 85 operations. The web shell is the BUILD-01 foundation: navigation,
 light/dark themes, degraded banner and the shared `@drcc/ui` primitives. The Command Center and My DR screens land in
 BUILD-12/13, gated on Figma sign-off; until then the product surface is the API.
 
@@ -35,25 +35,30 @@ BUILD-12/13, gated on Figma sign-off; until then the product surface is the API.
 | BUILD-05 | `v0.05.0` | Excel plan import: upload, parse, heuristic mapping, reviewable draft Tasks with provenance |
 | BUILD-06 | `v0.06.0` | Canonical Task model, Work Streams, HARD/ADVISORY Finish-to-Start dependency DAG with cycle rejection |
 | BUILD-07 | `v0.07.0` | Milestones as manual gates, fixed Owning Team / floating assignee, Manager-precedence assignment, live workload |
-| BUILD-08 | in progress | Blocker lifecycle with Team-queue routing and tiered escalation (done); Issues, comments, alerts and the typed catalog (next) |
+| BUILD-08 | `v0.08.0` | Blocker lifecycle with Team-queue routing and tiered escalation; Issues/Findings; cross-Team comments with @mentions; alert acknowledge and personal snooze; the typed D-234 catalogs; notification fan-out port |
+| BUILD-09 | `v0.09.0` | Evidence items with content-sniffed uploads, EICAR quarantine and a Defender webhook; CLEAN-gated protected completion; DR Application technical validation with the RTO clock stop; admin file policy |
 
 ### API surface
 
-68 operations over 12 modules, all under `/api/v1`, documented live at http://localhost:8000/docs.
+85 operations over 15 modules, all under `/api/v1`, documented live at http://localhost:8000/docs.
 
 | Module | Operations | Highlights |
 |---|---|---|
 | `auth` | 10 | Entra login/callback, local login, password reset, TOTP enrol/verify, reauth, CSRF, logout |
 | `users_teams_org` | 4 | `/me`, users, teams |
 | `applications_catalog` | 8 | Applications, owner slots, history, tier admin |
-| `policies_admin` | 2 | Policy values by scope |
+| `policies_admin` | 4 | Policy values by scope; the file-upload policy (allowlist, size cap, scanning) |
 | `plans_import` | 7 | Plans, plan versions, Excel import jobs and accept |
-| `dr_events` | 9 | DR Events, activate / cancel / close, participants, readiness |
+| `dr_events` | 11 | DR Events, activate / start-failover / start-failback / close / cancel, readiness; DR Application submit-validation and validate |
 | `work_streams` | 2 | Shared lanes per Event |
 | `tasks_dependencies` | 13 | Task commands (start, block, resume, submit-validation, validate, cancel), metadata PATCH, dependencies, dependency graph |
 | `milestones` | 3 | Create, list, confirm |
 | `resources_skills` | 4 | Assign, volunteer, Team workload, Event resources |
 | `blockers` | 5 | Assign, start, resolve, verify; Event Blocker list with Team-queue filters |
+| `issues_findings` | 5 | Create, list, review, resolve, dismiss (never blocks execution) |
+| `collaboration` | 4 | Comments with @mentions on any visible target; alert acknowledge and snooze |
+| `evidence` | 3 | Create text/link evidence or a file handshake, attach the file, read metadata with a signed download URL |
+| `internal` | 1 | Malware-scan result receiver for Microsoft Defender (HMAC-authenticated, machine-to-machine) |
 | `default` | 1 | Health |
 
 ### Design rules the code enforces
@@ -64,6 +69,8 @@ BUILD-12/13, gated on Figma sign-off; until then the product surface is the API.
 - Server-side authorization on every mutation; knowing a UUID is never authorization, and foreign objects answer 404.
 - Optimistic concurrency with `expected_version`; a stale write is a 409, except the documented Manager-precedence case.
 - Scheduled work (Milestone MISSED sweep, Blocker escalation) runs on one Celery beat and audits as `SYSTEM`.
+- Uploads are checked server-side: extension allowlist, size cap, content sniffing that ignores the client's declared type, and a malware scan. An infected or unscanned file never counts toward a Task's evidence.
+- A Task reaches COMPLETED only through validation by an Application Owner, Work Stream Lead, Admin or Coordinator, never by its executor.
 - Frozen specification under `docs/spec/` is read-only on code branches; CI fails any change to it.
 
 ## Stack
