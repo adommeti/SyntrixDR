@@ -15,10 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockers.routes import router as blockers_router
 from app.comments_mentions_notifications.routes import router as collaboration_router
 from app.core.clock import FakeClock
+from app.dr_events.routes import router as dr_events_router
 from app.issues_findings.routes import router as issues_router
 from app.milestones.routes import router as milestones_router
+from app.policies_admin.routes import router as policies_admin_router
 from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.routes import router as tasks_router
+from app.validation_evidence.routes import router as evidence_router
+from app.validation_evidence.webhook import router as malware_webhook_router
 from app.work_streams.routes import router as work_streams_router
 from tests.factories import build_world, http, login
 
@@ -32,7 +36,12 @@ _ROUTERS = (
     blockers_router,
     issues_router,
     collaboration_router,
+    evidence_router,
+    dr_events_router,
+    policies_admin_router,
 )
+#: Machine-to-machine receivers authenticated by HMAC, not a user command (ADR-024): no session, CSRF or key.
+_INTERNAL_ROUTERS = (malware_webhook_router,)
 _T = str(uuid.uuid4())
 
 #: (method, path template) -> a body that passes schema validation, so the only thing missing is the key.
@@ -66,6 +75,30 @@ BODIES: dict[tuple[str, str], dict[str, Any] | None] = {
     ("POST", "/api/v1/{target_type}/{target_id}/comments"): {"body": "x"},
     ("POST", "/api/v1/alerts/{alert_id}/acknowledge"): {},
     ("POST", "/api/v1/alerts/{alert_id}/snooze"): {"snoozed_until": "2030-01-01T00:00:00Z"},
+    ("POST", "/api/v1/evidence"): {
+        "target_type": "TASK",
+        "target_id": _T,
+        "evidence_type": "TEXT",
+        "text_content": "x",
+    },
+    (
+        "POST",
+        "/api/v1/evidence/{evidence_id}/file",
+    ): {},  # the key is checked before the multipart body is read
+    ("POST", "/api/v1/dr-events"): {"name": "x", "event_type": "PLANNED_DR", "application_ids": []},
+    ("POST", "/api/v1/dr-events/{event_id}/activate"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/start-failover"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/mark-failed-over"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/start-failback"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/close"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-events/{event_id}/cancel"): {"expected_version": 1, "reason": "x"},
+    ("POST", "/api/v1/dr-applications/{dr_application_id}/submit-validation"): {"expected_version": 1},
+    ("POST", "/api/v1/dr-applications/{dr_application_id}/validate"): {
+        "expected_version": 1,
+        "approve": True,
+    },
+    ("PUT", "/api/v1/admin/policies"): {"key": "file.max_mb", "value": 1, "scope_type": "GLOBAL"},
+    ("PUT", "/api/v1/admin/file-policy"): {"max_mb": 1, "allowed_extensions": ["pdf"]},
 }
 
 
@@ -83,6 +116,17 @@ def test_every_command_route_is_covered() -> None:
     assert _command_routes() == set(BODIES)
 
 
+def test_internal_receivers_are_exactly_the_documented_set() -> None:
+    internal = {
+        (m, r.path)
+        for router in _INTERNAL_ROUTERS
+        for r in router.routes
+        if isinstance(r, APIRoute)
+        for m in r.methods - {"GET", "HEAD"}
+    }
+    assert internal == {("POST", "/api/v1/internal/malware-result")}
+
+
 @pytest.mark.parametrize(("method", "path"), sorted(BODIES))
 async def test_command_without_an_idempotency_key_is_400(
     session: AsyncSession, redis_client: Redis, clock: FakeClock, method: str, path: str
@@ -96,6 +140,8 @@ async def test_command_without_an_idempotency_key_is_400(
         blocker_id=uuid.uuid4(),
         issue_id=uuid.uuid4(),
         alert_id=uuid.uuid4(),
+        evidence_id=uuid.uuid4(),
+        dr_application_id=uuid.uuid4(),
         target_type="TASK",
         target_id=uuid.uuid4(),
         event_id=w.event_id,

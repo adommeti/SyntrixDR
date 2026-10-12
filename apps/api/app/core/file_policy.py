@@ -36,10 +36,14 @@ class FilePolicy(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now_utc)
 
 
-async def get_file_policy(session: AsyncSession) -> FilePolicy:
+async def get_file_policy(session: AsyncSession, *, for_update: bool = False) -> FilePolicy:
     """The migration seeds exactly one row (`INSERT INTO file_policy (singleton) VALUES (TRUE)`,
-    schema_v2_reconciliation.sql:496) -- always present after `alembic upgrade head`."""
-    result = await session.execute(select(FilePolicy).where(FilePolicy.singleton.is_(True)))
+    schema_v2_reconciliation.sql:496) -- always present after `alembic upgrade head`. `for_update`
+    locks and refreshes the row so an admin edit reads the latest values (ADR-036)."""
+    stmt = select(FilePolicy).where(FilePolicy.singleton.is_(True))
+    if for_update:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    result = await session.execute(stmt)
     policy = result.scalar_one_or_none()
     assert policy is not None, "file_policy singleton row missing -- migration seed didn't run"
     return policy

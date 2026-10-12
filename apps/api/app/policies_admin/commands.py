@@ -9,9 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import write_audit
 from app.core.clock import Clock, SystemClock
 from app.core.errors import AppError
+from app.core.file_policy import FilePolicy, get_file_policy
 from app.policies_admin.models import PolicyDefinition, PolicyValue
 from app.policies_admin.queries import PolicyService, get_policy_definition
 from app.users_teams_org.authorization import AuthorizationService, Capability, Scope
+from app.validation_evidence.sniff import CANONICAL_MIME
+
+KNOWN_EXTENSIONS = frozenset(CANONICAL_MIME)
 
 #: schema_v2_reconciliation.sql:434 -- fixed at HARD_STOP, not configurable; the service must
 #: reject writes to this key regardless of actor or scope (BUILD-03.plan.md Risk #4).
@@ -143,3 +147,85 @@ async def set_policy_value(
         },
     )
     return new_row
+
+
+# --------------------------------------------------------------------------------------------
+# File policy (API_CONTRACT.md:266; D-225, D-245). One singleton row; the `file.max_mb` /
+# `file.allowlist` policy values are kept in step (schema_v2_reconciliation.sql:352).
+# --------------------------------------------------------------------------------------------
+
+
+class FilePolicyValueInvalidError(AppError):
+    code = "FILE_POLICY_VALUE_INVALID"
+    status_code = 422
+
+    def __init__(self, field: str, problem: str) -> None:
+        super().__init__(f"{field} {problem}.", details={"field": field})
+
+
+class UnknownExtensionError(AppError):
+    code = "UNKNOWN_EXTENSION"
+    status_code = 422
+
+    def __init__(self, extensions: list[str]) -> None:
+        super().__init__(
+            "Only extensions the server can content-check may be allowed.",
+            details={"unknown": extensions, "known": sorted(KNOWN_EXTENSIONS)},
+        )
+
+
+async def update_file_policy(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID,
+    max_mb: int,
+    allowed_extensions: list[str],
+    scanning_required: bool,
+    clock: Clock | None = None,
+) -> FilePolicy:
+    """Global Admin only (`GLOBAL_POLICY_CONFIG` unscoped). `allowed_mime_types` are derived from the
+    extensions through the sniffer's canonical map so the two lists can never disagree (BUILD-09.plan.md
+    Risk B5); the policy values mirror the row for the policy UI."""
+    clock = clock or SystemClock()
+    await AuthorizationService.require(session, actor_id, Capability.GLOBAL_POLICY_CONFIG, Scope())
+    extensions = sorted({e.strip().lower().lstrip(".") for e in allowed_extensions if e.strip()})
+    unknown = [e for e in extensions if e not in KNOWN_EXTENSIONS]
+    if unknown:
+        raise UnknownExtensionError(unknown)
+    if max_mb < 1:
+        raise FilePolicyValueInvalidError("max_mb", "must be at least 1")
+
+    policy = await get_file_policy(session, for_update=True)  # serialise concurrent admin edits
+    before = {
+        "max_bytes": policy.max_bytes,
+        "allowed_extensions": list(policy.allowed_extensions),
+        "scanning_required": policy.scanning_required,
+    }
+    policy.max_bytes = max_mb * 1024 * 1024
+    policy.allowed_extensions = extensions
+    policy.allowed_mime_types = sorted({CANONICAL_MIME[e] for e in extensions})
+    policy.scanning_required = scanning_required
+    policy.updated_by_user_id = actor_id
+    policy.updated_at = clock.now()
+    await session.flush()
+    await write_audit(
+        session,
+        actor_user_id=actor_id,
+        entity_type="FILE_POLICY",
+        entity_id=policy.id,
+        action="FILE_POLICY_UPDATED",
+        before=before,
+        after={
+            "max_bytes": policy.max_bytes,
+            "allowed_extensions": extensions,
+            "allowed_mime_types": policy.allowed_mime_types,
+            "scanning_required": scanning_required,
+        },
+    )
+    await set_policy_value(
+        session, actor_id=actor_id, key="file.max_mb", value=max_mb, scope_type="GLOBAL", clock=clock
+    )
+    await set_policy_value(
+        session, actor_id=actor_id, key="file.allowlist", value=extensions, scope_type="GLOBAL", clock=clock
+    )
+    return policy

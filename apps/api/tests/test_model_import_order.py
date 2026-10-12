@@ -30,6 +30,7 @@ OWNED_TABLES = {
     "notifications",
     "alert_snoozes",
     "issue_findings",
+    "evidence_items",
 }
 MODULES = [
     "app.blockers.models",

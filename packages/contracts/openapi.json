@@ -959,6 +959,83 @@
         "title": "CreateDrEventRequest",
         "type": "object"
       },
+      "CreateEvidenceRequest": {
+        "additionalProperties": false,
+        "description": "`POST /evidence` (API_CONTRACT.md:203): text / link evidence, or the file-upload handshake.",
+        "properties": {
+          "evidence_type": {
+            "default": "TEXT",
+            "enum": [
+              "TEXT",
+              "LOG",
+              "EXTERNAL_LINK",
+              "FILE",
+              "SCREENSHOT"
+            ],
+            "title": "Evidence Type",
+            "type": "string"
+          },
+          "external_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Url"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Name"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "TASK",
+              "DR_APPLICATION",
+              "MILESTONE",
+              "BLOCKER",
+              "VALIDATION",
+              "ISSUE_FINDING"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "text_content": {
+            "anyOf": [
+              {
+                "maxLength": 50000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Content"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id"
+        ],
+        "title": "CreateEvidenceRequest",
+        "type": "object"
+      },
       "CreateIssueRequest": {
         "additionalProperties": false,
         "description": "`POST /dr-events/{id}/issues` (API_CONTRACT.md:185).",
@@ -1608,6 +1685,22 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "technical_validated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Technical Validated At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -1619,7 +1712,9 @@
           "rto_target_minutes",
           "rpo_target_minutes",
           "rpo_not_applicable",
-          "failback_required"
+          "failback_required",
+          "version",
+          "technical_validated_at"
         ],
         "title": "DrApplicationResponse",
         "type": "object"
@@ -2197,6 +2292,175 @@
         "title": "EventResourcesResponse",
         "type": "object"
       },
+      "EvidenceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checksum"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "download_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Url"
+          },
+          "evidence_type": {
+            "enum": [
+              "TEXT",
+              "LOG",
+              "EXTERNAL_LINK",
+              "FILE",
+              "SCREENSHOT"
+            ],
+            "title": "Evidence Type",
+            "type": "string"
+          },
+          "external_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Url"
+          },
+          "file_attached": {
+            "title": "File Attached",
+            "type": "boolean"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Name"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "malware_scan_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "PENDING",
+                  "CLEAN",
+                  "INFECTED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Malware Scan Status"
+          },
+          "malware_scanned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Malware Scanned At"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          },
+          "text_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Content"
+          },
+          "uploaded_by_user_id": {
+            "format": "uuid",
+            "title": "Uploaded By User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_type",
+          "target_id",
+          "evidence_type",
+          "text_content",
+          "external_url",
+          "file_name",
+          "mime_type",
+          "size_bytes",
+          "checksum",
+          "malware_scan_status",
+          "malware_scanned_at",
+          "file_attached",
+          "download_url",
+          "uploaded_by_user_id",
+          "created_at"
+        ],
+        "title": "EvidenceResponse",
+        "type": "object"
+      },
       "ExpectedVersionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2209,6 +2473,60 @@
           "expected_version"
         ],
         "title": "ExpectedVersionRequest",
+        "type": "object"
+      },
+      "FilePolicyResponse": {
+        "additionalProperties": false,
+        "description": "`GET/PUT /admin/file-policy` (API_CONTRACT.md:266).",
+        "properties": {
+          "allowed_extensions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Extensions",
+            "type": "array"
+          },
+          "allowed_mime_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Mime Types",
+            "type": "array"
+          },
+          "max_bytes": {
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "max_mb": {
+            "title": "Max Mb",
+            "type": "integer"
+          },
+          "scanning_required": {
+            "title": "Scanning Required",
+            "type": "boolean"
+          },
+          "updated_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By User Id"
+          }
+        },
+        "required": [
+          "max_mb",
+          "max_bytes",
+          "allowed_extensions",
+          "allowed_mime_types",
+          "scanning_required",
+          "updated_by_user_id"
+        ],
+        "title": "FilePolicyResponse",
         "type": "object"
       },
       "GraphEdgeResponse": {
@@ -2733,6 +3051,25 @@
           "message"
         ],
         "title": "LogoutResponse",
+        "type": "object"
+      },
+      "MalwareResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "malware_scan_status": {
+            "title": "Malware Scan Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "malware_scan_status"
+        ],
+        "title": "MalwareResultResponse",
         "type": "object"
       },
       "MeResponse": {
@@ -3796,6 +4133,32 @@
         "title": "StartTaskRequest",
         "type": "object"
       },
+      "SubmitApplicationValidationRequest": {
+        "additionalProperties": false,
+        "description": "`POST /dr-applications/{id}/submit-validation` (API_CONTRACT.md:206).",
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Override Reason"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "SubmitApplicationValidationRequest",
+        "type": "object"
+      },
       "SubmitValidationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4549,6 +4912,33 @@
         "title": "UpdateApplicationRequest",
         "type": "object"
       },
+      "UpdateFilePolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_extensions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Extensions",
+            "type": "array"
+          },
+          "max_mb": {
+            "title": "Max Mb",
+            "type": "integer"
+          },
+          "scanning_required": {
+            "default": true,
+            "title": "Scanning Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "max_mb",
+          "allowed_extensions"
+        ],
+        "title": "UpdateFilePolicyRequest",
+        "type": "object"
+      },
       "UpdateTaskRequest": {
         "additionalProperties": false,
         "description": "`PATCH /tasks/{id}` (API_CONTRACT.md:158). Only fields present in the body change\n(`model_fields_set`); the defaults below are never applied. `extra=\"forbid\"` is what keeps status,\nOwning Team, assignee, context, phase and parent out (422).",
@@ -4704,6 +5094,53 @@
           "is_active"
         ],
         "title": "UserResponse",
+        "type": "object"
+      },
+      "ValidateApplicationRequest": {
+        "additionalProperties": false,
+        "description": "`POST /dr-applications/{id}/validate` (API_CONTRACT.md:207); the business note is the Business\nOwner's optional confirmation carried on the Validation record (RBAC_MATRIX.md:18).",
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "business_confirmation_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Confirmation Note"
+          },
+          "business_confirmed": {
+            "default": false,
+            "title": "Business Confirmed",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "expected_version",
+          "approve"
+        ],
+        "title": "ValidateApplicationRequest",
         "type": "object"
       },
       "ValidateTaskRequest": {
@@ -4929,6 +5366,64 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/file-policy": {
+      "get": {
+        "operationId": "get_file_policy_route_api_v1_admin_file_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilePolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get File Policy Route",
+        "tags": [
+          "policies_admin"
+        ]
+      },
+      "put": {
+        "operationId": "put_file_policy_route_api_v1_admin_file_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFilePolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put File Policy Route",
+        "tags": [
+          "policies_admin"
+        ]
+      }
+    },
     "/api/v1/admin/local-users": {
       "post": {
         "description": "High-risk, Global-Admin-only, reauth-guarded (D-235/D-228). A real domain command (not a\nsession endpoint like identity_auth's routes), so D-215 applies: Idempotency-Key required.",
@@ -6020,6 +6515,110 @@
         ]
       }
     },
+    "/api/v1/dr-applications/{dr_application_id}/submit-validation": {
+      "post": {
+        "description": "API_CONTRACT.md:206 -- RECOVERING \u2192 TECHNICAL_VALIDATION (or a failback validation request).",
+        "operationId": "post_submit_application_validation_api_v1_dr_applications__dr_application_id__submit_validation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dr_application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dr Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitApplicationValidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Submit Application Validation",
+        "tags": [
+          "dr_events"
+        ]
+      }
+    },
+    "/api/v1/dr-applications/{dr_application_id}/validate": {
+      "post": {
+        "description": "API_CONTRACT.md:207 -- technical validation; never via AI (D-228).",
+        "operationId": "post_validate_application_api_v1_dr_applications__dr_application_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dr_application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dr Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Validate Application",
+        "tags": [
+          "dr_events"
+        ]
+      }
+    },
     "/api/v1/dr-events": {
       "get": {
         "operationId": "list_events_route_api_v1_dr_events_get",
@@ -7081,6 +7680,135 @@
         ]
       }
     },
+    "/api/v1/evidence": {
+      "post": {
+        "operationId": "post_create_evidence_api_v1_evidence_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEvidenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create Evidence",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/{evidence_id}": {
+      "get": {
+        "description": "API_CONTRACT.md:205 -- metadata plus content authorization (a signed URL for CLEAN files).",
+        "operationId": "get_evidence_route_api_v1_evidence__evidence_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Evidence Route",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/{evidence_id}/file": {
+      "post": {
+        "description": "API_CONTRACT.md:204 -- the attaching command, so the key is required (D-215). The multipart body is\nread by hand and hashed from filename + bytes (the BUILD-05 multipart rule).",
+        "operationId": "post_attach_file_api_v1_evidence__evidence_id__file_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Attach File",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "health_api_v1_health_get",
@@ -7194,6 +7922,27 @@
         "summary": "Post Accept Import",
         "tags": [
           "plans_import"
+        ]
+      }
+    },
+    "/api/v1/internal/malware-result": {
+      "post": {
+        "operationId": "post_malware_result_api_v1_internal_malware_result_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MalwareResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Post Malware Result",
+        "tags": [
+          "internal"
         ]
       }
     },

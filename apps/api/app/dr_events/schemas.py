@@ -119,9 +119,39 @@ class DrApplicationResponse(BaseModel):
     rpo_target_minutes: int | None
     rpo_not_applicable: bool
     failback_required: bool
+    version: (
+        int  # clients need it for `expected_version` on the Application commands (D-214 stale-write rule)
+    )
+    technical_validated_at: datetime | None
 
 
 class DrEventDetailResponse(DrEventResponse):
     """`GET /dr-events/{id}` -- "Event deep detail" (API_CONTRACT.md)."""
 
     dr_applications: list[DrApplicationResponse]
+
+
+class SubmitApplicationValidationRequest(BaseModel):
+    """`POST /dr-applications/{id}/submit-validation` (API_CONTRACT.md:206)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: int
+    override_reason: str | None = None
+
+
+class ValidateApplicationRequest(BaseModel):
+    """`POST /dr-applications/{id}/validate` (API_CONTRACT.md:207); the business note is the Business
+    Owner's optional confirmation carried on the Validation record (RBAC_MATRIX.md:18)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: int
+    approve: bool
+    note: str | None = None
+    business_confirmed: bool = False
+    business_confirmation_note: str | None = None
+
+
+class DrApplicationCommandResponse(DrApplicationResponse):
+    """Same shape as the read model; kept as a named type for the command routes' OpenAPI entries."""

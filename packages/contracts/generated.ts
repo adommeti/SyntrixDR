@@ -4,6 +4,24 @@
  */
 
 export interface paths {
+    "/api/v1/admin/file-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get File Policy Route */
+        get: operations["get_file_policy_route_api_v1_admin_file_policy_get"];
+        /** Put File Policy Route */
+        put: operations["put_file_policy_route_api_v1_admin_file_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/local-users": {
         parameters: {
             query?: never;
@@ -450,6 +468,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dr-applications/{dr_application_id}/submit-validation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Submit Application Validation
+         * @description API_CONTRACT.md:206 -- RECOVERING → TECHNICAL_VALIDATION (or a failback validation request).
+         */
+        post: operations["post_submit_application_validation_api_v1_dr_applications__dr_application_id__submit_validation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dr-applications/{dr_application_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Validate Application
+         * @description API_CONTRACT.md:207 -- technical validation; never via AI (D-228).
+         */
+        post: operations["post_validate_application_api_v1_dr_applications__dr_application_id__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dr-events": {
         parameters: {
             query?: never;
@@ -730,6 +788,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Create Evidence */
+        post: operations["post_create_evidence_api_v1_evidence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evidence Route
+         * @description API_CONTRACT.md:205 -- metadata plus content authorization (a signed URL for CLEAN files).
+         */
+        get: operations["get_evidence_route_api_v1_evidence__evidence_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/{evidence_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Attach File
+         * @description API_CONTRACT.md:204 -- the attaching command, so the key is required (D-215). The multipart body is
+         *     read by hand and hashed from filename + bytes (the BUILD-05 multipart rule).
+         */
+        post: operations["post_attach_file_api_v1_evidence__evidence_id__file_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -775,6 +891,23 @@ export interface paths {
         put?: never;
         /** Post Accept Import */
         post: operations["post_accept_import_api_v1_imports__import_job_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/malware-result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Malware Result */
+        post: operations["post_malware_result_api_v1_internal_malware_result_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1533,6 +1666,34 @@ export interface components {
             plan_version_id?: string | null;
         };
         /**
+         * CreateEvidenceRequest
+         * @description `POST /evidence` (API_CONTRACT.md:203): text / link evidence, or the file-upload handshake.
+         */
+        CreateEvidenceRequest: {
+            /**
+             * Evidence Type
+             * @default TEXT
+             * @enum {string}
+             */
+            evidence_type: "TEXT" | "LOG" | "EXTERNAL_LINK" | "FILE" | "SCREENSHOT";
+            /** External Url */
+            external_url?: string | null;
+            /** File Name */
+            file_name?: string | null;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @enum {string}
+             */
+            target_type: "TASK" | "DR_APPLICATION" | "MILESTONE" | "BLOCKER" | "VALIDATION" | "ISSUE_FINDING";
+            /** Text Content */
+            text_content?: string | null;
+        };
+        /**
          * CreateIssueRequest
          * @description `POST /dr-events/{id}/issues` (API_CONTRACT.md:185).
          */
@@ -1775,6 +1936,10 @@ export interface components {
             rto_target_minutes: number;
             /** Status */
             status: string;
+            /** Technical Validated At */
+            technical_validated_at: string | null;
+            /** Version */
+            version: number;
         };
         /**
          * DrEventDetailResponse
@@ -1934,10 +2099,78 @@ export interface components {
             /** Teams */
             teams: components["schemas"]["TeamLoadResponse"][];
         };
+        /** EvidenceResponse */
+        EvidenceResponse: {
+            /** Checksum */
+            checksum: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Download Url */
+            download_url: string | null;
+            /**
+             * Evidence Type
+             * @enum {string}
+             */
+            evidence_type: "TEXT" | "LOG" | "EXTERNAL_LINK" | "FILE" | "SCREENSHOT";
+            /** External Url */
+            external_url: string | null;
+            /** File Attached */
+            file_attached: boolean;
+            /** File Name */
+            file_name: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Malware Scan Status */
+            malware_scan_status: ("PENDING" | "CLEAN" | "INFECTED") | null;
+            /** Malware Scanned At */
+            malware_scanned_at: string | null;
+            /** Mime Type */
+            mime_type: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+            /** Text Content */
+            text_content: string | null;
+            /**
+             * Uploaded By User Id
+             * Format: uuid
+             */
+            uploaded_by_user_id: string;
+        };
         /** ExpectedVersionRequest */
         ExpectedVersionRequest: {
             /** Expected Version */
             expected_version: number;
+        };
+        /**
+         * FilePolicyResponse
+         * @description `GET/PUT /admin/file-policy` (API_CONTRACT.md:266).
+         */
+        FilePolicyResponse: {
+            /** Allowed Extensions */
+            allowed_extensions: string[];
+            /** Allowed Mime Types */
+            allowed_mime_types: string[];
+            /** Max Bytes */
+            max_bytes: number;
+            /** Max Mb */
+            max_mb: number;
+            /** Scanning Required */
+            scanning_required: boolean;
+            /** Updated By User Id */
+            updated_by_user_id: string | null;
         };
         /** GraphEdgeResponse */
         GraphEdgeResponse: {
@@ -2140,6 +2373,13 @@ export interface components {
         LogoutResponse: {
             /** Message */
             message: string;
+        };
+        /** MalwareResultResponse */
+        MalwareResultResponse: {
+            /** Evidence Id */
+            evidence_id: string;
+            /** Malware Scan Status */
+            malware_scan_status: string;
         };
         /** MeResponse */
         MeResponse: {
@@ -2530,6 +2770,16 @@ export interface components {
             /** Override Reason */
             override_reason?: string | null;
         };
+        /**
+         * SubmitApplicationValidationRequest
+         * @description `POST /dr-applications/{id}/submit-validation` (API_CONTRACT.md:206).
+         */
+        SubmitApplicationValidationRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Override Reason */
+            override_reason?: string | null;
+        };
         /** SubmitValidationRequest */
         SubmitValidationRequest: {
             /** Expected Version */
@@ -2799,6 +3049,18 @@ export interface components {
             /** Tier Id */
             tier_id?: string | null;
         };
+        /** UpdateFilePolicyRequest */
+        UpdateFilePolicyRequest: {
+            /** Allowed Extensions */
+            allowed_extensions: string[];
+            /** Max Mb */
+            max_mb: number;
+            /**
+             * Scanning Required
+             * @default true
+             */
+            scanning_required: boolean;
+        };
         /**
          * UpdateTaskRequest
          * @description `PATCH /tasks/{id}` (API_CONTRACT.md:158). Only fields present in the body change
@@ -2864,6 +3126,26 @@ export interface components {
             is_active: boolean;
             /** Job Title */
             job_title: string | null;
+        };
+        /**
+         * ValidateApplicationRequest
+         * @description `POST /dr-applications/{id}/validate` (API_CONTRACT.md:207); the business note is the Business
+         *     Owner's optional confirmation carried on the Validation record (RBAC_MATRIX.md:18).
+         */
+        ValidateApplicationRequest: {
+            /** Approve */
+            approve: boolean;
+            /** Business Confirmation Note */
+            business_confirmation_note?: string | null;
+            /**
+             * Business Confirmed
+             * @default false
+             */
+            business_confirmed: boolean;
+            /** Expected Version */
+            expected_version: number;
+            /** Note */
+            note?: string | null;
         };
         /** ValidateTaskRequest */
         ValidateTaskRequest: {
@@ -2947,6 +3229,59 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_file_policy_route_api_v1_admin_file_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilePolicyResponse"];
+                };
+            };
+        };
+    };
+    put_file_policy_route_api_v1_admin_file_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFilePolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_create_local_user_api_v1_admin_local_users_post: {
         parameters: {
             query?: never;
@@ -3759,6 +4094,76 @@ export interface operations {
             };
         };
     };
+    post_submit_application_validation_api_v1_dr_applications__dr_application_id__submit_validation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dr_application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitApplicationValidationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_validate_application_api_v1_dr_applications__dr_application_id__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dr_application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidateApplicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_events_route_api_v1_dr_events_get: {
         parameters: {
             query?: never;
@@ -4449,6 +4854,101 @@ export interface operations {
             };
         };
     };
+    post_create_evidence_api_v1_evidence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEvidenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evidence_route_api_v1_evidence__evidence_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_attach_file_api_v1_evidence__evidence_id__file_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -4533,6 +5033,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_malware_result_api_v1_internal_malware_result_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MalwareResultResponse"];
                 };
             };
         };

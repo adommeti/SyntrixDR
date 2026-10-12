@@ -147,6 +147,43 @@ def alert_sql(statement: str) -> Mutate:
     return mutate
 
 
+def app_in(status: str, *, pending: bool = False) -> Setup:
+    """The world's DR Application in `status`; `pending=True` also opens a PENDING validation by the
+    system owner (so the coordinator may validate it)."""
+
+    async def setup(session: AsyncSession, w: World, clock: FakeClock) -> Ids:
+        await session.execute(
+            text("UPDATE dr_applications SET status = CAST(:s AS dr_application_status) WHERE id = :a"),
+            {"s": status, "a": w.dr_application_id},
+        )
+        if pending:
+            await session.execute(
+                text(
+                    "INSERT INTO validations (id, target_type, target_id, status, created_by_user_id, "
+                    "created_at, updated_at) VALUES (:id, 'DR_APPLICATION', :a, 'PENDING', :u, now(), now())"
+                ),
+                {"id": uuid.uuid4(), "a": w.dr_application_id, "u": w.system_owner_id},
+            )
+        return {"app": w.dr_application_id}
+
+    return setup
+
+
+async def add_unfinished_failover_task(session: AsyncSession, w: World, ids: Ids, clock: FakeClock) -> None:
+    await seed_task(session, w, status="IN_PROGRESS")  # app-scoped, phase FAILOVER by default
+
+
+def app_path(command: str) -> PathFn:
+    return lambda w, ids: f"/api/v1/dr-applications/{ids['app']}/{command}"
+
+
+def app_sql(statement: str) -> Mutate:
+    async def mutate(session: AsyncSession, w: World, ids: Ids, clock: FakeClock) -> None:
+        await session.execute(text(statement), {"a": ids["app"]})
+
+    return mutate
+
+
 def milestone_in(status: str) -> Setup:
     async def setup(session: AsyncSession, w: World, clock: FakeClock) -> Ids:
         return {"milestone": await seed_milestone(session, w, status=status)}
@@ -623,6 +660,88 @@ SPECS: dict[str, Spec] = {
             ),
         },
     ),
+    "create evidence": Spec(
+        "POST",
+        lambda w, ids: "/api/v1/evidence",
+        lambda w, ids: {
+            "target_type": "TASK",
+            "target_id": str(ids["task"]),
+            "evidence_type": "TEXT",
+            "text_content": "x",
+        },
+        task_in("IN_PROGRESS"),
+        ok_actor="executor_id",
+        ok_status=201,
+        forbidden_actor="business_owner_id",
+        not_found=("stranger_id", Case(404, "EVIDENCE_TARGET_NOT_FOUND")),
+        malformed=Case(422, "", body=body(evidence_type="TEXT")),  # target missing
+        guard=Case(
+            422,
+            "EVIDENCE_PAYLOAD_INVALID",
+            body=lambda w, ids: {
+                "target_type": "TASK",
+                "target_id": str(ids["task"]),
+                "evidence_type": "TEXT",
+            },
+        ),
+    ),
+    "submit app validation": Spec(
+        "POST",
+        app_path("submit-validation"),
+        body(expected_version=1),
+        app_in("RECOVERING"),
+        ok_actor="system_owner_id",
+        ok_status=200,
+        forbidden_actor="executor_id",
+        not_found=("stranger_id", Case(404, "DR_APPLICATION_NOT_FOUND")),
+        malformed=MISSING_VERSION,
+        guard=Case(
+            409,
+            "APPLICATION_TASKS_UNFINISHED",
+            mutate=add_unfinished_failover_task,
+        ),
+        conflicts={
+            "stale version": stale(),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=app_sql("UPDATE dr_applications SET status = 'FAILED_OVER' WHERE id = :a"),
+            ),
+        },
+    ),
+    "validate app": Spec(
+        "POST",
+        app_path("validate"),
+        body(expected_version=1, approve=True),
+        app_in("TECHNICAL_VALIDATION", pending=True),
+        ok_actor="coordinator_id",
+        ok_status=200,
+        forbidden_actor="executor_id",
+        not_found=("stranger_id", Case(404, "DR_APPLICATION_NOT_FOUND")),
+        malformed=MISSING_VERSION,
+        guard=Case(422, "REJECTION_NOTE_REQUIRED", body=body(expected_version=1, approve=False)),
+        conflicts={
+            "stale version": stale(approve=True),
+            "illegal transition": Case(
+                409,
+                "INVALID_TRANSITION",
+                mutate=app_sql("UPDATE dr_applications SET status = 'RECOVERING' WHERE id = :a"),
+                body=body(expected_version=1, approve=True),
+            ),
+        },
+    ),
+    "put file policy": Spec(
+        "PUT",
+        lambda w, ids: "/api/v1/admin/file-policy",
+        body(max_mb=10, allowed_extensions=["pdf", "txt"], scanning_required=True),
+        nothing,
+        ok_actor="admin_id",
+        ok_status=200,
+        forbidden_actor="coordinator_id",
+        not_found=("stranger_id", Case(403, "AUTHORIZATION_REQUIRED")),  # global singleton: nothing to hide
+        malformed=Case(422, "", body=body(max_mb="ten")),
+        guard=Case(422, "UNKNOWN_EXTENSION", body=body(max_mb=10, allowed_extensions=["exe"])),
+    ),
     "volunteer": Spec(
         "POST",
         task_path("volunteer"),
@@ -757,9 +876,13 @@ SPECS: dict[str, Spec] = {
 
 
 async def written(session: AsyncSession, w: World) -> tuple[int, int]:
+    """Every audit and outbox row in the test's database -- the world is this test's own, so a count
+    over all rows is the strictest "nothing was written" check and also covers global commands
+    (file policy) whose audit carries no Event."""
+    _ = w
     return (
-        await count(session, "SELECT count(*) FROM audit_events WHERE dr_event_id = :e", e=w.event_id),
-        await count(session, "SELECT count(*) FROM outbox_events WHERE dr_event_id = :e", e=w.event_id),
+        await count(session, "SELECT count(*) FROM audit_events"),
+        await count(session, "SELECT count(*) FROM outbox_events"),
     )
 
 
@@ -933,4 +1056,6 @@ def test_every_command_in_the_matrix_has_every_mandatory_category() -> None:
         "create milestone",
         "create issue",
         "create comment",
+        "create evidence",
+        "put file policy",
     }

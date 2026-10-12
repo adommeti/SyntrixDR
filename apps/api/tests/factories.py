@@ -23,8 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockers.routes import router as blockers_router
 from app.comments_mentions_notifications.routes import router as collaboration_router
 from app.core.clock import Clock, FakeClock
+from app.core.config import get_settings
 from app.core.database import get_request_session
 from app.core.errors import AppError, app_error_handler
+from app.core.storage import ObjectStore
 from app.dr_events.participants import enrol_participant
 from app.dr_events.routes import router as dr_events_router
 from app.identity_auth.dependencies import get_clock, get_session_store
@@ -32,10 +34,14 @@ from app.identity_auth.models import SessionRecord
 from app.identity_auth.session_store import RedisSessionStore
 from app.issues_findings.routes import router as issues_findings_router
 from app.milestones.routes import router as milestones_router
+from app.policies_admin.routes import router as policies_admin_router
 from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.commands import create_draft_task
 from app.tasks_dependencies.routes import router as tasks_router
 from app.users_teams_org.models import RoleAssignment
+from app.validation_evidence.routes import router as evidence_router
+from app.validation_evidence.scanning import MockMalwareScanner
+from app.validation_evidence.webhook import router as malware_webhook_router
 from app.work_streams.commands import get_or_create_work_stream
 from app.work_streams.routes import router as work_streams_router
 
@@ -387,6 +393,9 @@ def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> F
     app.include_router(blockers_router)
     app.include_router(issues_findings_router)
     app.include_router(collaboration_router)
+    app.include_router(evidence_router)
+    app.include_router(policies_admin_router)
+    app.include_router(malware_webhook_router)
 
     async def _session_override():  # noqa: ANN202
         yield session
@@ -395,6 +404,8 @@ def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> F
         return clock
 
     app.state.session_store = RedisSessionStore(redis_client, idle_minutes=30, absolute_hours=8)
+    app.state.object_store = ObjectStore(get_settings().azure_storage_connection_string)
+    app.state.malware_scanner = MockMalwareScanner()
     app.dependency_overrides[get_request_session] = _session_override
     app.dependency_overrides[get_clock] = _clock_override
     app.dependency_overrides[get_session_store] = lambda: app.state.session_store
@@ -674,3 +685,47 @@ async def notifications_of(session: AsyncSession, user_id: uuid.UUID) -> list[An
         {"u": user_id},
     )
     return list(rows)
+
+
+async def seed_evidence(
+    session: AsyncSession,
+    w: World,
+    *,
+    target_type: str = "TASK",
+    target_id: uuid.UUID,
+    evidence_type: str = "TEXT",
+    scan_status: str | None = None,
+    attached: bool = True,
+    uploaded_by: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """Raw SQL evidence row consistent with `evidence_payload_ck`; `create_evidence`/`attach_file` are the
+    commands. File rows get a fake `blob_uri`; `attached=False` leaves a handshake (no checksum)."""
+    evidence_id = uuid.uuid4()
+    is_file = evidence_type in ("FILE", "SCREENSHOT")
+    await session.execute(
+        text(
+            "INSERT INTO evidence_items (id, target_type, target_id, evidence_type, text_content, "
+            "external_url, blob_uri, file_name, mime_type, size_bytes, checksum, malware_scan_status, "
+            "uploaded_by_user_id, created_at) "
+            "VALUES (:id, CAST(:tt AS target_type), :tid, CAST(:et AS evidence_type), :txt, :url, :blob, "
+            ":fname, :mime, :size, :sum, :scan, :uid, now())"
+        ),
+        {
+            "id": evidence_id,
+            "tt": target_type,
+            "tid": target_id,
+            "et": evidence_type,
+            "txt": "seeded" if evidence_type in ("TEXT", "LOG") else None,
+            "url": "https://example.test/x" if evidence_type == "EXTERNAL_LINK" else None,
+            "blob": f"http://127.0.0.1:10000/devstoreaccount1/evidence/{w.event_id}/{evidence_id}/f.pdf"
+            if is_file
+            else None,
+            "fname": "f.pdf" if is_file else None,
+            "mime": "application/pdf" if (is_file and attached) else None,
+            "size": 5 if (is_file and attached) else None,
+            "sum": "deadbeef" if (is_file and attached) else None,
+            "scan": scan_status if is_file else None,
+            "uid": uploaded_by or w.executor_id,
+        },
+    )
+    return evidence_id

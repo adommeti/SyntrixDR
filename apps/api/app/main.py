@@ -28,6 +28,8 @@ from app.policies_admin.routes import router as policies_admin_router
 from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.routes import router as tasks_dependencies_router
 from app.users_teams_org.routes import router as users_teams_org_router
+from app.validation_evidence.routes import router as evidence_router
+from app.validation_evidence.webhook import router as malware_webhook_router
 from app.work_streams.routes import router as work_streams_router
 
 CORRELATION_ID_HEADER = "X-Correlation-Id"
@@ -89,6 +91,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(blockers_router)
     app.include_router(issues_findings_router)
     app.include_router(collaboration_router)
+    app.include_router(evidence_router)
+    app.include_router(malware_webhook_router)
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:

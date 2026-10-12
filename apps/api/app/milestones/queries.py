@@ -114,3 +114,12 @@ async def overdue_milestone_ids(session: AsyncSession, *, now: datetime, limit: 
         .limit(limit)
     )
     return [milestone_id for (milestone_id,) in rows]
+
+
+async def get_milestone(session: AsyncSession, milestone_id: uuid.UUID) -> Milestone | None:
+    """The live Milestone without a lock (for other modules' authority checks)."""
+    return (
+        await session.execute(
+            select(Milestone).where(Milestone.id == milestone_id, Milestone.deleted_at.is_(None))
+        )
+    ).scalar_one_or_none()
