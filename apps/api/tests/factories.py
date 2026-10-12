@@ -34,6 +34,7 @@ from app.identity_auth.models import SessionRecord
 from app.identity_auth.session_store import RedisSessionStore
 from app.issues_findings.routes import router as issues_findings_router
 from app.milestones.routes import router as milestones_router
+from app.policies_admin.routes import router as policies_admin_router
 from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.commands import create_draft_task
 from app.tasks_dependencies.routes import router as tasks_router
@@ -393,6 +394,7 @@ def build_app(session: AsyncSession, redis_client: Redis, clock: FakeClock) -> F
     app.include_router(issues_findings_router)
     app.include_router(collaboration_router)
     app.include_router(evidence_router)
+    app.include_router(policies_admin_router)
     app.include_router(malware_webhook_router)
 
     async def _session_override():  # noqa: ANN202

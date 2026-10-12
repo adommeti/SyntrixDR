@@ -18,6 +18,7 @@ from app.core.clock import FakeClock
 from app.dr_events.routes import router as dr_events_router
 from app.issues_findings.routes import router as issues_router
 from app.milestones.routes import router as milestones_router
+from app.policies_admin.routes import router as policies_admin_router
 from app.resources_skills.routes import router as resources_skills_router
 from app.tasks_dependencies.routes import router as tasks_router
 from app.validation_evidence.routes import router as evidence_router
@@ -37,6 +38,7 @@ _ROUTERS = (
     collaboration_router,
     evidence_router,
     dr_events_router,
+    policies_admin_router,
 )
 #: Machine-to-machine receivers authenticated by HMAC, not a user command (ADR-024): no session, CSRF or key.
 _INTERNAL_ROUTERS = (malware_webhook_router,)
@@ -95,6 +97,8 @@ BODIES: dict[tuple[str, str], dict[str, Any] | None] = {
         "expected_version": 1,
         "approve": True,
     },
+    ("PUT", "/api/v1/admin/policies"): {"key": "file.max_mb", "value": 1, "scope_type": "GLOBAL"},
+    ("PUT", "/api/v1/admin/file-policy"): {"max_mb": 1, "allowed_extensions": ["pdf"]},
 }
 
 

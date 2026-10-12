@@ -730,6 +730,18 @@ SPECS: dict[str, Spec] = {
             ),
         },
     ),
+    "put file policy": Spec(
+        "PUT",
+        lambda w, ids: "/api/v1/admin/file-policy",
+        body(max_mb=10, allowed_extensions=["pdf", "txt"], scanning_required=True),
+        nothing,
+        ok_actor="admin_id",
+        ok_status=200,
+        forbidden_actor="coordinator_id",
+        not_found=("stranger_id", Case(403, "AUTHORIZATION_REQUIRED")),  # global singleton: nothing to hide
+        malformed=Case(422, "", body=body(max_mb="ten")),
+        guard=Case(422, "UNKNOWN_EXTENSION", body=body(max_mb=10, allowed_extensions=["exe"])),
+    ),
     "volunteer": Spec(
         "POST",
         task_path("volunteer"),
@@ -864,9 +876,13 @@ SPECS: dict[str, Spec] = {
 
 
 async def written(session: AsyncSession, w: World) -> tuple[int, int]:
+    """Every audit and outbox row in the test's database -- the world is this test's own, so a count
+    over all rows is the strictest "nothing was written" check and also covers global commands
+    (file policy) whose audit carries no Event."""
+    _ = w
     return (
-        await count(session, "SELECT count(*) FROM audit_events WHERE dr_event_id = :e", e=w.event_id),
-        await count(session, "SELECT count(*) FROM outbox_events WHERE dr_event_id = :e", e=w.event_id),
+        await count(session, "SELECT count(*) FROM audit_events"),
+        await count(session, "SELECT count(*) FROM outbox_events"),
     )
 
 
@@ -1041,4 +1057,5 @@ def test_every_command_in_the_matrix_has_every_mandatory_category() -> None:
         "create issue",
         "create comment",
         "create evidence",
+        "put file policy",
     }

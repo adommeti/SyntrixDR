@@ -4,6 +4,24 @@
  */
 
 export interface paths {
+    "/api/v1/admin/file-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get File Policy Route */
+        get: operations["get_file_policy_route_api_v1_admin_file_policy_get"];
+        /** Put File Policy Route */
+        put: operations["put_file_policy_route_api_v1_admin_file_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/local-users": {
         parameters: {
             query?: never;
@@ -2132,6 +2150,24 @@ export interface components {
             /** Expected Version */
             expected_version: number;
         };
+        /**
+         * FilePolicyResponse
+         * @description `GET/PUT /admin/file-policy` (API_CONTRACT.md:266).
+         */
+        FilePolicyResponse: {
+            /** Allowed Extensions */
+            allowed_extensions: string[];
+            /** Allowed Mime Types */
+            allowed_mime_types: string[];
+            /** Max Bytes */
+            max_bytes: number;
+            /** Max Mb */
+            max_mb: number;
+            /** Scanning Required */
+            scanning_required: boolean;
+            /** Updated By User Id */
+            updated_by_user_id: string | null;
+        };
         /** GraphEdgeResponse */
         GraphEdgeResponse: {
             /**
@@ -3009,6 +3045,18 @@ export interface components {
             /** Tier Id */
             tier_id?: string | null;
         };
+        /** UpdateFilePolicyRequest */
+        UpdateFilePolicyRequest: {
+            /** Allowed Extensions */
+            allowed_extensions: string[];
+            /** Max Mb */
+            max_mb: number;
+            /**
+             * Scanning Required
+             * @default true
+             */
+            scanning_required: boolean;
+        };
         /**
          * UpdateTaskRequest
          * @description `PATCH /tasks/{id}` (API_CONTRACT.md:158). Only fields present in the body change
@@ -3177,6 +3225,59 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_file_policy_route_api_v1_admin_file_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilePolicyResponse"];
+                };
+            };
+        };
+    };
+    put_file_policy_route_api_v1_admin_file_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFilePolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_create_local_user_api_v1_admin_local_users_post: {
         parameters: {
             query?: never;

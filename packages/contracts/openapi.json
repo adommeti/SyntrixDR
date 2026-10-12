@@ -2457,6 +2457,60 @@
         "title": "ExpectedVersionRequest",
         "type": "object"
       },
+      "FilePolicyResponse": {
+        "additionalProperties": false,
+        "description": "`GET/PUT /admin/file-policy` (API_CONTRACT.md:266).",
+        "properties": {
+          "allowed_extensions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Extensions",
+            "type": "array"
+          },
+          "allowed_mime_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Mime Types",
+            "type": "array"
+          },
+          "max_bytes": {
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "max_mb": {
+            "title": "Max Mb",
+            "type": "integer"
+          },
+          "scanning_required": {
+            "title": "Scanning Required",
+            "type": "boolean"
+          },
+          "updated_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By User Id"
+          }
+        },
+        "required": [
+          "max_mb",
+          "max_bytes",
+          "allowed_extensions",
+          "allowed_mime_types",
+          "scanning_required",
+          "updated_by_user_id"
+        ],
+        "title": "FilePolicyResponse",
+        "type": "object"
+      },
       "GraphEdgeResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4840,6 +4894,33 @@
         "title": "UpdateApplicationRequest",
         "type": "object"
       },
+      "UpdateFilePolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_extensions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Extensions",
+            "type": "array"
+          },
+          "max_mb": {
+            "title": "Max Mb",
+            "type": "integer"
+          },
+          "scanning_required": {
+            "default": true,
+            "title": "Scanning Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "max_mb",
+          "allowed_extensions"
+        ],
+        "title": "UpdateFilePolicyRequest",
+        "type": "object"
+      },
       "UpdateTaskRequest": {
         "additionalProperties": false,
         "description": "`PATCH /tasks/{id}` (API_CONTRACT.md:158). Only fields present in the body change\n(`model_fields_set`); the defaults below are never applied. `extra=\"forbid\"` is what keeps status,\nOwning Team, assignee, context, phase and parent out (422).",
@@ -5267,6 +5348,64 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/file-policy": {
+      "get": {
+        "operationId": "get_file_policy_route_api_v1_admin_file_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilePolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get File Policy Route",
+        "tags": [
+          "policies_admin"
+        ]
+      },
+      "put": {
+        "operationId": "put_file_policy_route_api_v1_admin_file_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFilePolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put File Policy Route",
+        "tags": [
+          "policies_admin"
+        ]
+      }
+    },
     "/api/v1/admin/local-users": {
       "post": {
         "description": "High-risk, Global-Admin-only, reauth-guarded (D-235/D-228). A real domain command (not a\nsession endpoint like identity_auth's routes), so D-215 applies: Idempotency-Key required.",

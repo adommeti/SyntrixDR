@@ -6,15 +6,19 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
+from app.core.file_policy import FilePolicy, get_file_policy
 from app.core.idempotency import complete, require_idempotency_key
 from app.identity_auth.dependencies import ClockDep, CurrentSession, DbSession, RequireCsrfDependency
-from app.policies_admin.commands import resolve_all_authorized, set_policy_value
+from app.policies_admin.commands import resolve_all_authorized, set_policy_value, update_file_policy
 from app.policies_admin.schemas import (
+    FilePolicyResponse,
     PolicyItemResponse,
     PolicyListResponse,
     PolicyValueResponse,
     SetPolicyValueRequest,
+    UpdateFilePolicyRequest,
 )
+from app.users_teams_org.authorization import AuthorizationService, Capability, Scope
 
 router = APIRouter(prefix="/api/v1", tags=["policies_admin"])
 
@@ -77,6 +81,51 @@ async def put_policy_route(
         scope_type=policy_value.scope_type,
         scope_id=policy_value.scope_id,
     )
+    await complete(session, ctx, 200, response.model_dump(mode="json"))
+    await session.commit()
+    return response
+
+
+def _file_policy_response(policy: FilePolicy) -> FilePolicyResponse:
+    return FilePolicyResponse(
+        max_mb=policy.max_bytes // (1024 * 1024),
+        max_bytes=policy.max_bytes,
+        allowed_extensions=list(policy.allowed_extensions),
+        allowed_mime_types=list(policy.allowed_mime_types),
+        scanning_required=policy.scanning_required,
+        updated_by_user_id=policy.updated_by_user_id,
+    )
+
+
+@router.get("/admin/file-policy")
+async def get_file_policy_route(session: DbSession, session_data: CurrentSession) -> FilePolicyResponse:
+    await AuthorizationService.require(
+        session, session_data.user_id, Capability.GLOBAL_POLICY_CONFIG, Scope()
+    )
+    return _file_policy_response(await get_file_policy(session))
+
+
+@router.put("/admin/file-policy", dependencies=[RequireCsrfDependency], response_model=None)
+async def put_file_policy_route(
+    request: Request,
+    body: UpdateFilePolicyRequest,
+    session: DbSession,
+    session_data: CurrentSession,
+    clock: ClockDep,
+) -> FilePolicyResponse | JSONResponse:
+    ctx = await require_idempotency_key(request, session, session_data.user_id, clock)
+    if ctx.is_replay:
+        assert ctx.stored_status is not None
+        return JSONResponse(status_code=ctx.stored_status, content=ctx.stored_body)
+    policy = await update_file_policy(
+        session,
+        actor_id=session_data.user_id,
+        max_mb=body.max_mb,
+        allowed_extensions=body.allowed_extensions,
+        scanning_required=body.scanning_required,
+        clock=clock,
+    )
+    response = _file_policy_response(policy)
     await complete(session, ctx, 200, response.model_dump(mode="json"))
     await session.commit()
     return response
