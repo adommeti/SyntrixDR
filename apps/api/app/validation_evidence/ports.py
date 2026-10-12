@@ -29,8 +29,11 @@ class NoEvidenceItemsYet:
 
 
 async def get_evidence_counter() -> EvidenceCounter:
-    """FastAPI dependency -- the one place BUILD-09 swaps in the real counter."""
-    return NoEvidenceItemsYet()
+    """FastAPI dependency: the real counter since BUILD-09 (`queries.AcceptableEvidenceCounter`,
+    CLEAN-gated per D-245). `NoEvidenceItemsYet` stays only as the honest zero for tests."""
+    from app.validation_evidence.queries import AcceptableEvidenceCounter  # late: queries imports models
+
+    return AcceptableEvidenceCounter()
 
 
 EvidenceCounterDep = Annotated[EvidenceCounter, Depends(get_evidence_counter)]

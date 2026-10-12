@@ -1059,7 +1059,7 @@ async def test_domain_errors_render_the_api_contract_envelope(
 async def test_default_evidence_counter_honestly_reports_none_over_http(
     session: AsyncSession, redis_client: Redis, clock: FakeClock
 ) -> None:
-    """The route's real dependency (not a test double) is `NoEvidenceItemsYet` until BUILD-09."""
+    """The route's real dependency (not a test double) counts acceptable evidence; with none, 409."""
     w = await build_world(session)
     task_id = await seed_task(session, w, status="IN_PROGRESS", evidence_required=True)
     sid, csrf = await login(session, redis_client, clock, w.executor_id)

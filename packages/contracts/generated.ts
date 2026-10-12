@@ -730,6 +730,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Create Evidence */
+        post: operations["post_create_evidence_api_v1_evidence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evidence Route
+         * @description API_CONTRACT.md:205 -- metadata plus content authorization (a signed URL for CLEAN files).
+         */
+        get: operations["get_evidence_route_api_v1_evidence__evidence_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/{evidence_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Attach File
+         * @description API_CONTRACT.md:204 -- the attaching command, so the key is required (D-215). The multipart body is
+         *     read by hand and hashed from filename + bytes (the BUILD-05 multipart rule).
+         */
+        post: operations["post_attach_file_api_v1_evidence__evidence_id__file_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -775,6 +833,23 @@ export interface paths {
         put?: never;
         /** Post Accept Import */
         post: operations["post_accept_import_api_v1_imports__import_job_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/malware-result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Malware Result */
+        post: operations["post_malware_result_api_v1_internal_malware_result_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1533,6 +1608,34 @@ export interface components {
             plan_version_id?: string | null;
         };
         /**
+         * CreateEvidenceRequest
+         * @description `POST /evidence` (API_CONTRACT.md:203): text / link evidence, or the file-upload handshake.
+         */
+        CreateEvidenceRequest: {
+            /**
+             * Evidence Type
+             * @default TEXT
+             * @enum {string}
+             */
+            evidence_type: "TEXT" | "LOG" | "EXTERNAL_LINK" | "FILE" | "SCREENSHOT";
+            /** External Url */
+            external_url?: string | null;
+            /** File Name */
+            file_name?: string | null;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @enum {string}
+             */
+            target_type: "TASK" | "DR_APPLICATION" | "MILESTONE" | "BLOCKER" | "VALIDATION" | "ISSUE_FINDING";
+            /** Text Content */
+            text_content?: string | null;
+        };
+        /**
          * CreateIssueRequest
          * @description `POST /dr-events/{id}/issues` (API_CONTRACT.md:185).
          */
@@ -1934,6 +2037,56 @@ export interface components {
             /** Teams */
             teams: components["schemas"]["TeamLoadResponse"][];
         };
+        /** EvidenceResponse */
+        EvidenceResponse: {
+            /** Checksum */
+            checksum: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Download Url */
+            download_url: string | null;
+            /**
+             * Evidence Type
+             * @enum {string}
+             */
+            evidence_type: "TEXT" | "LOG" | "EXTERNAL_LINK" | "FILE" | "SCREENSHOT";
+            /** External Url */
+            external_url: string | null;
+            /** File Attached */
+            file_attached: boolean;
+            /** File Name */
+            file_name: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Malware Scan Status */
+            malware_scan_status: ("PENDING" | "CLEAN" | "INFECTED") | null;
+            /** Malware Scanned At */
+            malware_scanned_at: string | null;
+            /** Mime Type */
+            mime_type: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+            /** Text Content */
+            text_content: string | null;
+            /**
+             * Uploaded By User Id
+             * Format: uuid
+             */
+            uploaded_by_user_id: string;
+        };
         /** ExpectedVersionRequest */
         ExpectedVersionRequest: {
             /** Expected Version */
@@ -2140,6 +2293,13 @@ export interface components {
         LogoutResponse: {
             /** Message */
             message: string;
+        };
+        /** MalwareResultResponse */
+        MalwareResultResponse: {
+            /** Evidence Id */
+            evidence_id: string;
+            /** Malware Scan Status */
+            malware_scan_status: string;
         };
         /** MeResponse */
         MeResponse: {
@@ -4449,6 +4609,101 @@ export interface operations {
             };
         };
     };
+    post_create_evidence_api_v1_evidence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEvidenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evidence_route_api_v1_evidence__evidence_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_attach_file_api_v1_evidence__evidence_id__file_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -4533,6 +4788,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_malware_result_api_v1_internal_malware_result_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MalwareResultResponse"];
                 };
             };
         };

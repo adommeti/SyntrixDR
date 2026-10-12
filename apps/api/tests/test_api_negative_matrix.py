@@ -623,6 +623,31 @@ SPECS: dict[str, Spec] = {
             ),
         },
     ),
+    "create evidence": Spec(
+        "POST",
+        lambda w, ids: "/api/v1/evidence",
+        lambda w, ids: {
+            "target_type": "TASK",
+            "target_id": str(ids["task"]),
+            "evidence_type": "TEXT",
+            "text_content": "x",
+        },
+        task_in("IN_PROGRESS"),
+        ok_actor="executor_id",
+        ok_status=201,
+        forbidden_actor="business_owner_id",
+        not_found=("stranger_id", Case(404, "EVIDENCE_TARGET_NOT_FOUND")),
+        malformed=Case(422, "", body=body(evidence_type="TEXT")),  # target missing
+        guard=Case(
+            422,
+            "EVIDENCE_PAYLOAD_INVALID",
+            body=lambda w, ids: {
+                "target_type": "TASK",
+                "target_id": str(ids["task"]),
+                "evidence_type": "TEXT",
+            },
+        ),
+    ),
     "volunteer": Spec(
         "POST",
         task_path("volunteer"),
@@ -933,4 +958,5 @@ def test_every_command_in_the_matrix_has_every_mandatory_category() -> None:
         "create milestone",
         "create issue",
         "create comment",
+        "create evidence",
     }

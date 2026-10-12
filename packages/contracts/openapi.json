@@ -959,6 +959,83 @@
         "title": "CreateDrEventRequest",
         "type": "object"
       },
+      "CreateEvidenceRequest": {
+        "additionalProperties": false,
+        "description": "`POST /evidence` (API_CONTRACT.md:203): text / link evidence, or the file-upload handshake.",
+        "properties": {
+          "evidence_type": {
+            "default": "TEXT",
+            "enum": [
+              "TEXT",
+              "LOG",
+              "EXTERNAL_LINK",
+              "FILE",
+              "SCREENSHOT"
+            ],
+            "title": "Evidence Type",
+            "type": "string"
+          },
+          "external_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Url"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Name"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "TASK",
+              "DR_APPLICATION",
+              "MILESTONE",
+              "BLOCKER",
+              "VALIDATION",
+              "ISSUE_FINDING"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "text_content": {
+            "anyOf": [
+              {
+                "maxLength": 50000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Content"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id"
+        ],
+        "title": "CreateEvidenceRequest",
+        "type": "object"
+      },
       "CreateIssueRequest": {
         "additionalProperties": false,
         "description": "`POST /dr-events/{id}/issues` (API_CONTRACT.md:185).",
@@ -2197,6 +2274,175 @@
         "title": "EventResourcesResponse",
         "type": "object"
       },
+      "EvidenceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checksum"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "download_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Url"
+          },
+          "evidence_type": {
+            "enum": [
+              "TEXT",
+              "LOG",
+              "EXTERNAL_LINK",
+              "FILE",
+              "SCREENSHOT"
+            ],
+            "title": "Evidence Type",
+            "type": "string"
+          },
+          "external_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Url"
+          },
+          "file_attached": {
+            "title": "File Attached",
+            "type": "boolean"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Name"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "malware_scan_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "PENDING",
+                  "CLEAN",
+                  "INFECTED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Malware Scan Status"
+          },
+          "malware_scanned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Malware Scanned At"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          },
+          "text_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Content"
+          },
+          "uploaded_by_user_id": {
+            "format": "uuid",
+            "title": "Uploaded By User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_type",
+          "target_id",
+          "evidence_type",
+          "text_content",
+          "external_url",
+          "file_name",
+          "mime_type",
+          "size_bytes",
+          "checksum",
+          "malware_scan_status",
+          "malware_scanned_at",
+          "file_attached",
+          "download_url",
+          "uploaded_by_user_id",
+          "created_at"
+        ],
+        "title": "EvidenceResponse",
+        "type": "object"
+      },
       "ExpectedVersionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2733,6 +2979,25 @@
           "message"
         ],
         "title": "LogoutResponse",
+        "type": "object"
+      },
+      "MalwareResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "malware_scan_status": {
+            "title": "Malware Scan Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "malware_scan_status"
+        ],
+        "title": "MalwareResultResponse",
         "type": "object"
       },
       "MeResponse": {
@@ -7081,6 +7346,135 @@
         ]
       }
     },
+    "/api/v1/evidence": {
+      "post": {
+        "operationId": "post_create_evidence_api_v1_evidence_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEvidenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create Evidence",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/{evidence_id}": {
+      "get": {
+        "description": "API_CONTRACT.md:205 -- metadata plus content authorization (a signed URL for CLEAN files).",
+        "operationId": "get_evidence_route_api_v1_evidence__evidence_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Evidence Route",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/evidence/{evidence_id}/file": {
+      "post": {
+        "description": "API_CONTRACT.md:204 -- the attaching command, so the key is required (D-215). The multipart body is\nread by hand and hashed from filename + bytes (the BUILD-05 multipart rule).",
+        "operationId": "post_attach_file_api_v1_evidence__evidence_id__file_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Attach File",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "health_api_v1_health_get",
@@ -7194,6 +7588,27 @@
         "summary": "Post Accept Import",
         "tags": [
           "plans_import"
+        ]
+      }
+    },
+    "/api/v1/internal/malware-result": {
+      "post": {
+        "operationId": "post_malware_result_api_v1_internal_malware_result_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MalwareResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Post Malware Result",
+        "tags": [
+          "internal"
         ]
       }
     },

@@ -43,7 +43,7 @@ class ObjectStore:
             return blob_client.url
 
     async def download(self, uri: str) -> bytes:
-        container, blob_name = _split_blob_url(uri)
+        container, blob_name = split_blob_url(uri)
         async with BlobServiceClient.from_connection_string(self._connection_string) as service:
             blob_client = service.get_container_client(container).get_blob_client(blob_name)
             try:
@@ -53,7 +53,7 @@ class ObjectStore:
                 raise ObjectNotFoundError(uri) from exc
 
     async def content_type(self, uri: str) -> str:
-        container, blob_name = _split_blob_url(uri)
+        container, blob_name = split_blob_url(uri)
         async with BlobServiceClient.from_connection_string(self._connection_string) as service:
             blob_client = service.get_container_client(container).get_blob_client(blob_name)
             try:
@@ -63,7 +63,7 @@ class ObjectStore:
             return properties.content_settings.content_type or "application/octet-stream"
 
     async def delete(self, uri: str) -> None:
-        container, blob_name = _split_blob_url(uri)
+        container, blob_name = split_blob_url(uri)
         async with BlobServiceClient.from_connection_string(self._connection_string) as service:
             blob_client = service.get_container_client(container).get_blob_client(blob_name)
             try:
@@ -74,7 +74,7 @@ class ObjectStore:
     async def move(self, uri: str, new_blob_name: str) -> str:
         """Copy to `new_blob_name` in the same container, then delete the original. Used for
         quarantine (`quarantine/<original name>`, ADR-024). Returns the new URI."""
-        container, _ = _split_blob_url(uri)
+        container, _ = split_blob_url(uri)
         data = await self.download(uri)
         content_type = await self.content_type(uri)
         new_uri = await self.upload(container, new_blob_name, data, content_type=content_type)
@@ -84,7 +84,7 @@ class ObjectStore:
     def signed_download_url(self, uri: str, *, ttl_seconds: int) -> str:
         """A read-only SAS URL for `uri`, valid `ttl_seconds` from now (ADR-014's
         `BLOB_SAS_TTL_SECONDS`). Pure: the signature comes from the account key, no I/O."""
-        container, blob_name = _split_blob_url(uri)
+        container, blob_name = split_blob_url(uri)
         account_name, account_key = _account(self._connection_string)
         token = generate_blob_sas(
             account_name=account_name,
@@ -103,7 +103,7 @@ def _account(connection_string: str) -> tuple[str, str]:
     return parts["AccountName"], parts["AccountKey"]
 
 
-def _split_blob_url(uri: str) -> tuple[str, str]:
+def split_blob_url(uri: str) -> tuple[str, str]:
     """A blob URL's path is `/<account>/<container>/<blob_name...>` for the Azurite emulator (the
     account is a path segment, not part of the host) or `/<container>/<blob_name...>` for real
     Azure Blob (the account is in the hostname instead)."""
