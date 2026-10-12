@@ -76,9 +76,14 @@ async def post_malware_result(
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_BODY_BYTES:
         raise WebhookBodyTooLargeError()
-    body = await request.body()
-    if len(body) > MAX_BODY_BYTES:
-        raise WebhookBodyTooLargeError()
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in request.stream():  # counted as it arrives: a chunked body can't buffer past the cap
+        received += len(chunk)
+        if received > MAX_BODY_BYTES:
+            raise WebhookBodyTooLargeError()
+        chunks.append(chunk)
+    body = b"".join(chunks)
     provided = request.headers.get(SIGNATURE_HEADER, "")
     if not provided or not hmac.compare_digest(provided.encode("utf-8"), sign(secret, body).encode("utf-8")):
         raise WebhookSignatureInvalidError()

@@ -5,6 +5,7 @@ import re
 import uuid
 from typing import Any
 
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import write_audit
@@ -31,6 +32,8 @@ from app.validation_evidence.queries import (
 from app.validation_evidence.scanning import MalwareScanner, MalwareScanStatus
 from app.validation_evidence.sniff import extension_of, sniffed_mime
 from app.validation_evidence.transition_service import ValidationTransitionService
+
+logger = structlog.get_logger(__name__)
 
 
 async def open_task_validation(
@@ -456,8 +459,8 @@ async def attach_file(
         # The DB transaction rolls back; the blob must not outlive it (best-effort compensation).
         try:
             await object_store.delete(uri)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as cleanup_error:  # noqa: BLE001 -- report, never mask the original failure
+            logger.warning("evidence_blob_orphaned", blob_uri=uri, error=str(cleanup_error))
         raise
 
 

@@ -115,12 +115,15 @@ async def post_attach_file(
     read by hand and hashed from filename + bytes (the BUILD-05 multipart rule)."""
     if not request.headers.get(IDEMPOTENCY_HEADER):
         raise IdempotencyKeyRequiredError
-    # Reject an oversize body before parsing it (D-225 cap; memory). The exact check is in the command.
+    # Reject an honestly-declared oversize body before parsing it (D-225 cap). Starlette spools file
+    # parts to disk without a limit (`max_part_size` bounds only non-file fields), so a chunked or lying
+    # upload is still bounded only by the command's exact check after the spool; the hard body-size cap
+    # for that case belongs to the reverse proxy / ASGI layer (BUILD-22 follow-up).
     max_bytes = (await get_file_policy(session)).max_bytes
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > max_bytes + _MULTIPART_OVERHEAD:
         raise FileTooLargeError(max_bytes)
-    form = await request.form(max_part_size=max_bytes + 1)
+    form = await request.form()
     upload = form.get("file")
     if not isinstance(upload, UploadFile):
         return JSONResponse(status_code=422, content={"detail": "multipart field 'file' is required"})

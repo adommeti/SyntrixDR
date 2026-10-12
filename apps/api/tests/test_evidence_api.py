@@ -447,3 +447,63 @@ async def test_an_owner_may_attach_evidence_to_their_application_validation(
     for actor in (w.executor_id, w.ws_lead_id, w.business_owner_id, w.other_app_owner_id):
         denied = await _post_json(session, redis_client, clock, actor, "/api/v1/evidence", body)
         assert denied.status_code == 403, actor
+
+
+async def test_a_lying_content_length_is_rejected_before_the_body_is_parsed(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock
+) -> None:
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status="IN_PROGRESS")
+    evidence_id = await _handshake(session, redis_client, clock, w, task_id, "a.pdf")
+    sid, csrf = await login(session, redis_client, clock, w.executor_id)
+    async with http(session, redis_client, clock) as c:
+        r = await c.post(
+            f"/api/v1/evidence/{evidence_id}/file",
+            cookies={"drcc_session": sid},
+            headers={**headers(csrf), "Content-Length": str(200 * 1024 * 1024)},
+            content=b"",
+        )
+    await redis_client.delete(f"drcc:session:{sid}")
+    assert (r.status_code, r.json()["error"]["code"]) == (422, "FILE_TOO_LARGE")
+
+
+async def test_a_failure_after_the_upload_deletes_the_blob(
+    session: AsyncSession, redis_client: Redis, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import get_settings
+    from app.core.storage import ObjectNotFoundError, ObjectStore
+    from app.validation_evidence import commands
+
+    w = await build_world(session)
+    task_id = await seed_task(session, w, status="IN_PROGRESS")
+    evidence_id = await _handshake(session, redis_client, clock, w, task_id, "a.pdf")
+    uploaded: list[str] = []
+    real_upload = ObjectStore.upload
+
+    async def recording_upload(self: ObjectStore, *args: Any, **kwargs: Any) -> str:
+        uri = await real_upload(self, *args, **kwargs)
+        uploaded.append(uri)
+        return uri
+
+    class ExplodingScanner:
+        name = "boom"
+
+        async def scan(self, content: bytes, *, file_name: str) -> Any:
+            raise RuntimeError("scanner down")
+
+    monkeypatch.setattr(ObjectStore, "upload", recording_upload)
+    store = ObjectStore(get_settings().azure_storage_connection_string)
+    with pytest.raises(RuntimeError):
+        await commands.attach_file(
+            session,
+            actor_id=w.executor_id,
+            evidence_id=uuid.UUID(evidence_id),
+            file_name="a.pdf",
+            content=PDF,
+            object_store=store,
+            scanner=ExplodingScanner(),
+            clock=clock,
+        )
+    [uri] = uploaded
+    with pytest.raises(ObjectNotFoundError):
+        await ObjectStore(get_settings().azure_storage_connection_string).download(uri)
