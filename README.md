@@ -16,13 +16,13 @@ BUILD-12/13, gated on Figma sign-off; until then the product surface is the API.
 
 | Web shell — light | Web shell — dark |
 |---|---|
-| ![Web shell, light theme](docs/images/web-shell-light.png) | ![Web shell, dark theme](docs/images/web-shell-dark.png) |
+| ![Web shell, light theme](docs/reviews/screenshots/web-shell-light.png) | ![Web shell, dark theme](docs/reviews/screenshots/web-shell-dark.png) |
 
 | My DR route (placeholder until BUILD-13) | API reference (`/docs`) |
 |---|---|
-| ![My DR placeholder route](docs/images/web-my-dr.png) | ![OpenAPI reference, auth section](docs/images/api-docs.png) |
+| ![My DR placeholder route](docs/reviews/screenshots/web-my-dr.png) | ![OpenAPI reference, auth section](docs/reviews/screenshots/api-docs.png) |
 
-![OpenAPI reference, milestones, resources and blockers sections](docs/images/api-docs-blockers.png)
+![OpenAPI reference, milestones, resources and blockers sections](docs/reviews/screenshots/api-docs-blockers.png)
 
 ## What is built so far
 
@@ -112,7 +112,7 @@ Mailpit UI: http://localhost:8025 · API docs: http://localhost:8000/docs · Azu
 | Path | Purpose |
 |---|---|
 | `docs/spec/` | Frozen canon (read-only on code branches; CI enforces). Start with `FREEZE_ADDENDUM.md`, `FROZEN_DECISIONS.md`. |
-| `docs/adr/` · `docs/reviews/` · `docs/images/` | Engineering decisions · review/sign-off evidence · README screenshots |
+| `docs/adr/` · `docs/reviews/` · `docs/reviews/screenshots/` | Engineering decisions · review/sign-off evidence · README screenshots |
 | `apps/api` · `apps/web` | FastAPI modular monolith (`app/<module>/{routes,commands,queries,transition_service,policies,models}.py`) · Next.js command center |
 | `packages/contracts` · `packages/ui` · `packages/config` | Generated API types · shared UI primitives · shared lint/ts config |
 | `infra/bicep` · `infra/docker` · `infra/runner` | Azure IaC · local container init · self-hosted CI runner preparation |
